@@ -642,6 +642,7 @@ function renderDashboard() {
       <td class="text-center font-bold">${offers}</td>
       <td class="text-center">${inProg}</td>
       <td class="text-center text-green font-bold">${formatCurrency(fVal)}</td>
+      <td class="text-center font-bold ${ordDeals > 0 ? 'text-green' : ''}">${ordDeals}</td>
       <td class="text-center text-green font-bold">${formatCurrency(ordVal)}</td>
       <td class="text-center text-green font-bold">${formatCurrency(actVal)}</td>
       <td class="text-center">${rate}</td>
@@ -660,6 +661,7 @@ function renderDashboard() {
       <td class="text-center">${tOff}</td>
       <td class="text-center">${tProg}</td>
       <td class="text-center">${formatCurrency(tFVal)}</td>
+      <td class="text-center font-bold text-green">${tOrd}</td>
       <td class="text-center">${formatCurrency(tOVal)}</td>
       <td class="text-center">${formatCurrency(tAVal)}</td>
       <td class="text-center">${totRate}</td>
@@ -1121,6 +1123,21 @@ function initModalsAndDrawer() {
     }
   });
 
+  // Drawer tab switching
+  const drawerTabs = document.querySelectorAll(".drawer-tab");
+  drawerTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      drawerTabs.forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".drawer-tab-content").forEach(c => c.classList.remove("active"));
+
+      tab.classList.add("active");
+      const targetId = tab.dataset.drawerTab;
+      const targetContent = document.getElementById(targetId);
+      if (targetContent) targetContent.classList.add("active");
+      initLucide();
+    });
+  });
+
   // 4. CSV Exports
   document.getElementById("btnExportCSV").addEventListener("click", exportCSV);
   document.getElementById("btnExportTableCSV").addEventListener("click", exportCSV);
@@ -1129,7 +1146,16 @@ function initModalsAndDrawer() {
 function openDrawer(deal) {
   document.getElementById("editDealId").value = deal.id;
   document.getElementById("drawerSupplierTitle").textContent = deal.supplier || `Deal #${deal.id}`;
-  document.getElementById("drawerBuyerBadge").textContent = `Assigned to: ${deal.buyer}`;
+  document.getElementById("drawerBuyerBadge").textContent = `👤 ${deal.buyer}`;
+  document.getElementById("drawerCategoryBadge").textContent = `🏷️ ${deal.product_range || "General"}`;
+
+  const days = getDaysOpen(deal);
+  document.getElementById("drawerDelayBadge").textContent = days === "Closed" ? "🚫 Closed" : `⏱️ ${days}d open`;
+
+  let statusText = deal.status || "Detection (Draft)";
+  if (deal.status === "Negotiated") statusText = "🔮 Forecast";
+  else if (deal.status === "Ordered") statusText = "🟢 Ordered";
+  document.getElementById("drawerStatusBadge").textContent = statusText;
 
   document.getElementById("editEntryDate").value = deal.entry_date || "";
   document.getElementById("editBuyer").value = deal.buyer || "";
@@ -1151,57 +1177,78 @@ function openDrawer(deal) {
   document.getElementById("editStatus").value = deal.status || "";
   document.getElementById("editNotes").value = deal.notes || "";
 
+  // Reset to first tab
+  document.querySelectorAll(".drawer-tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".drawer-tab-content").forEach(c => c.classList.remove("active"));
+  const firstTab = document.querySelector('.drawer-tab[data-drawer-tab="tabOverview"]');
+  if (firstTab) firstTab.classList.add("active");
+  const firstContent = document.getElementById("tabOverview");
+  if (firstContent) firstContent.classList.add("active");
+
   document.getElementById("drawerOverlay").classList.add("open");
   initLucide();
 }
 
-// ── 13. CSV EXPORT ────────────────────────────────────────────────────────
+// ── 13. CSV EXPORT (BLOB + UTF-8 EXCEL COMPATIBILITY) ─────────────────────
 function exportCSV() {
-  if (filteredDeals.length === 0) {
-    alert("No records to export.");
+  const dealsToExport = (filteredDeals && filteredDeals.length > 0) ? filteredDeals : allDeals;
+
+  if (!dealsToExport || dealsToExport.length === 0) {
+    alert("No records found to export.");
     return;
   }
 
   const headers = [
     "ID", "Entry Date", "Buyer", "Supplier", "Product", "Category",
-    "Propo Canceled", "Affaire Created", "Affaire Date", "Affaire #",
+    "Propo Canceled", "Affaire Created", "Affaire Date", "Affaire Number",
     "Rejected Affair", "Affaire Sent", "Offer Received", "Offer Date",
-    "Offer #", "Offer Value ($)", "Status", "Notes", "Days Open", "Stale Alert"
+    "Offer Number", "Offer Value ($)", "Status", "Notes", "Days Open", "Stale Alert"
   ];
 
-  const rows = filteredDeals.map(d => [
-    d.id,
-    d.entry_date,
-    `"${(d.buyer || "").replace(/"/g, '""')}"`,
-    `"${(d.supplier || "").replace(/"/g, '""')}"`,
-    `"${(d.product || "").replace(/"/g, '""')}"`,
-    `"${(d.product_range || "").replace(/"/g, '""')}"`,
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""').replace(/[\r\n]+/g, ' ');
+    return `"${str}"`;
+  };
+
+  const rows = dealsToExport.map(d => [
+    d.id || "",
+    d.entry_date || "",
+    escapeCSV(d.buyer),
+    escapeCSV(d.supplier),
+    escapeCSV(d.product),
+    escapeCSV(d.product_range),
     d.propo_canceled ? "TRUE" : "FALSE",
     d.affaire_created ? "TRUE" : "FALSE",
     d.affaire_date || "",
-    d.affaire_number || "",
+    escapeCSV(d.affaire_number),
     d.rejected_affair ? "TRUE" : "FALSE",
     d.affaire_sent ? "TRUE" : "FALSE",
     d.offer_received ? "TRUE" : "FALSE",
     d.offer_date || "",
-    d.offer_number || "",
-    d.offer_value || 0,
-    d.status || "",
-    `"${(d.notes || "").replace(/"/g, '""')}"`,
-    getDaysOpen(d),
-    getStaleAlert(d)
+    escapeCSV(d.offer_number),
+    parseFloat(d.offer_value) || 0,
+    escapeCSV(d.status),
+    escapeCSV(d.notes),
+    escapeCSV(getDaysOpen(d)),
+    escapeCSV(getStaleAlert(d))
   ]);
 
-  const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-  const encodedUri = encodeURI(csvContent);
+  const csvRows = [headers.join(",")];
+  rows.forEach(r => csvRows.push(r.join(",")));
+  const csvString = "\uFEFF" + csvRows.join("\r\n"); // UTF-8 BOM for Excel
+
+  const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", `Panama_Pipeline_Export_${new Date().toISOString().split("T")[0]}.csv`);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Panama_Purchasing_Pipeline_${new Date().toISOString().split("T")[0]}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 
-  showToast("Export Ready", "CSV file generated and downloaded.");
+  showToast("Export Ready", `Exported ${dealsToExport.length} records to CSV.`);
 }
 
 // ── 14. HELPERS ───────────────────────────────────────────────────────────

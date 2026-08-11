@@ -13,7 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2.1">
 </head>
 <body>
   <!-- PIN Lock Overlay (Multi-User Login) -->
@@ -230,6 +230,7 @@
                     <th class="text-center">Offers</th>
                     <th class="text-center">In Progress</th>
                     <th class="text-center">Forecast ($)</th>
+                    <th class="text-center">Orders</th>
                     <th class="text-center">Ordered ($)</th>
                     <th class="text-center">Active ($)</th>
                     <th class="text-center">Rate</th>
@@ -479,129 +480,211 @@
   <!-- ================= SLIDE-OVER DEAL DETAIL & EDIT DRAWER ================= -->
   <div id="drawerOverlay" class="drawer-overlay">
     <div class="drawer-panel" id="dealDrawer">
-      <div class="drawer-header">
-        <div>
-          <h3 id="drawerSupplierTitle">Deal Details</h3>
-          <span class="text-muted" id="drawerBuyerBadge">Buyer Name</span>
+      <!-- Drawer Hero Header -->
+      <div class="drawer-hero">
+        <div class="drawer-hero-top">
+          <div class="drawer-avatar">🏢</div>
+          <div class="drawer-hero-info">
+            <h3 id="drawerSupplierTitle">Deal Details</h3>
+            <div class="drawer-hero-tags">
+              <span class="drawer-pill pill-buyer" id="drawerBuyerBadge">👤 Buyer</span>
+              <span class="drawer-pill pill-cat" id="drawerCategoryBadge">🏷️ Category</span>
+              <span class="drawer-pill pill-delay" id="drawerDelayBadge">⏱️ 0d open</span>
+              <span class="drawer-pill pill-status" id="drawerStatusBadge">Draft</span>
+            </div>
+          </div>
+          <button class="btn-close-drawer" id="btnCloseDrawer" title="Close Drawer">&times;</button>
         </div>
-        <button class="btn-close" id="btnCloseDrawer">&times;</button>
+
+        <!-- Drawer Segmented Tabs -->
+        <div class="drawer-nav-tabs">
+          <button type="button" class="drawer-tab active" data-drawer-tab="tabOverview">
+            <i data-lucide="file-text"></i> Overview
+          </button>
+          <button type="button" class="drawer-tab" data-drawer-tab="tabProgression">
+            <i data-lucide="check-circle-2"></i> Progression
+          </button>
+          <button type="button" class="drawer-tab" data-drawer-tab="tabFinancials">
+            <i data-lucide="dollar-sign"></i> Tracking & Value
+          </button>
+        </div>
       </div>
 
       <div class="drawer-body">
         <form id="drawerEditForm">
           <input type="hidden" id="editDealId">
           
-          <!-- Basic Info Section -->
-          <div class="drawer-section">
-            <div class="drawer-section-title"><i data-lucide="info"></i> Basic Information</div>
-            <div class="form-grid" style="padding:0; gap:0.75rem;">
-              <div class="form-group">
-                <label>Entry Date</label>
-                <input type="date" id="editEntryDate" class="form-control" required>
+          <!-- TAB 1: OVERVIEW -->
+          <div id="tabOverview" class="drawer-tab-content active">
+            <div class="drawer-section">
+              <div class="drawer-section-title"><i data-lucide="building-2"></i> Supplier & Product Details</div>
+              <div class="form-grid" style="padding:0; gap:0.85rem;">
+                <div class="form-group full-width">
+                  <label>Supplier Name *</label>
+                  <input type="text" id="editSupplier" class="form-control" placeholder="Supplier Company" required>
+                </div>
+                <div class="form-group full-width">
+                  <label>Product Description *</label>
+                  <input type="text" id="editProduct" class="form-control" placeholder="Product details / quantities" required>
+                </div>
+                <div class="form-group">
+                  <label>Entry Date *</label>
+                  <input type="date" id="editEntryDate" class="form-control" required>
+                </div>
+                <div class="form-group">
+                  <label>Assigned Buyer *</label>
+                  <select id="editBuyer" class="form-control" required>
+                    <option value="Ashley Jaen">Ashley Jaen</option>
+                    <option value="Daniel Fung">Daniel Fung</option>
+                    <option value="Jessica Cruz">Jessica Cruz</option>
+                    <option value="Jorge Chandeck">Jorge Chandeck</option>
+                    <option value="Julio Arispe">Julio Arispe</option>
+                    <option value="Marian Rovira">Marian Rovira</option>
+                  </select>
+                </div>
+                <div class="form-group full-width">
+                  <label>Product Range (Category) *</label>
+                  <select id="editCategory" class="form-control" required></select>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Buyer</label>
-                <select id="editBuyer" class="form-control" required>
-                  <option value="Ashley Jaen">Ashley Jaen</option>
-                  <option value="Daniel Fung">Daniel Fung</option>
-                  <option value="Jessica Cruz">Jessica Cruz</option>
-                  <option value="Jorge Chandeck">Jorge Chandeck</option>
-                  <option value="Julio Arispe">Julio Arispe</option>
-                  <option value="Marian Rovira">Marian Rovira</option>
-                </select>
+            </div>
+
+            <div class="drawer-section">
+              <div class="drawer-section-title"><i data-lucide="message-square"></i> Follow-up Notes & Comments</div>
+              <textarea id="editNotes" class="form-control" rows="3" placeholder="Add negotiation remarks, supplier deadlines, or follow-up history..."></textarea>
+            </div>
+          </div>
+
+          <!-- TAB 2: STAGE PROGRESSION -->
+          <div id="tabProgression" class="drawer-tab-content">
+            <div class="drawer-section">
+              <div class="drawer-section-title"><i data-lucide="workflow"></i> Stage Milestones</div>
+              <div class="stage-toggle-cards">
+                
+                <label class="toggle-card">
+                  <input type="checkbox" id="editAffaireCreated">
+                  <div class="toggle-card-body">
+                    <div class="toggle-card-header">
+                      <span class="toggle-icon icon-aff"><i data-lucide="folder-plus"></i></span>
+                      <strong>Affaire Created</strong>
+                    </div>
+                    <span class="toggle-card-desc">Auto-stamps affaire creation date</span>
+                  </div>
+                  <span class="toggle-check-indicator"></span>
+                </label>
+
+                <label class="toggle-card">
+                  <input type="checkbox" id="editAffaireSent">
+                  <div class="toggle-card-body">
+                    <div class="toggle-card-header">
+                      <span class="toggle-icon icon-sent"><i data-lucide="send"></i></span>
+                      <strong>Affaire Sent</strong>
+                    </div>
+                    <span class="toggle-card-desc">Transferred to buyer / supplier</span>
+                  </div>
+                  <span class="toggle-check-indicator"></span>
+                </label>
+
+                <label class="toggle-card">
+                  <input type="checkbox" id="editOfferReceived">
+                  <div class="toggle-card-body">
+                    <div class="toggle-card-header">
+                      <span class="toggle-icon icon-off"><i data-lucide="file-check"></i></span>
+                      <strong>Offer Received</strong>
+                    </div>
+                    <span class="toggle-card-desc">Auto-stamps offer reception date</span>
+                  </div>
+                  <span class="toggle-check-indicator"></span>
+                </label>
+
               </div>
-              <div class="form-group full-width">
-                <label>Supplier</label>
-                <input type="text" id="editSupplier" class="form-control" required>
-              </div>
-              <div class="form-group full-width">
-                <label>Product</label>
-                <input type="text" id="editProduct" class="form-control" required>
-              </div>
-              <div class="form-group full-width">
-                <label>Product Range (Category)</label>
-                <select id="editCategory" class="form-control" required></select>
+            </div>
+
+            <div class="drawer-section danger-section">
+              <div class="drawer-section-title text-rose"><i data-lucide="alert-octagon"></i> Rejections & Cancellations</div>
+              <div class="stage-toggle-cards">
+                <label class="toggle-card danger-card">
+                  <input type="checkbox" id="editPropoCanceled">
+                  <div class="toggle-card-body">
+                    <div class="toggle-card-header">
+                      <span class="toggle-icon icon-danger"><i data-lucide="x-circle"></i></span>
+                      <strong>Proposition Canceled</strong>
+                    </div>
+                    <span class="toggle-card-desc">Marks deal as closed / discontinued</span>
+                  </div>
+                  <span class="toggle-check-indicator"></span>
+                </label>
+
+                <label class="toggle-card danger-card">
+                  <input type="checkbox" id="editRejectedAffair">
+                  <div class="toggle-card-body">
+                    <div class="toggle-card-header">
+                      <span class="toggle-icon icon-danger"><i data-lucide="ban"></i></span>
+                      <strong>Rejected Affair</strong>
+                    </div>
+                    <span class="toggle-card-desc">Affaire rejected during negotiation</span>
+                  </div>
+                  <span class="toggle-check-indicator"></span>
+                </label>
               </div>
             </div>
           </div>
 
-          <!-- Progression Checkboxes Section -->
-          <div class="drawer-section">
-            <div class="drawer-section-title"><i data-lucide="check-square"></i> Stage Progression</div>
-            <div class="checkbox-row">
-              <label class="custom-checkbox">
-                <input type="checkbox" id="editAffaireCreated">
-                <span>Affaire Created?</span>
-              </label>
-              <label class="custom-checkbox">
-                <input type="checkbox" id="editAffaireSent">
-                <span>Affaire Sent?</span>
-              </label>
-              <label class="custom-checkbox">
-                <input type="checkbox" id="editOfferReceived">
-                <span>Offer Received?</span>
-              </label>
-              <label class="custom-checkbox text-rose">
-                <input type="checkbox" id="editPropoCanceled">
-                <span>Propo Canceled</span>
-              </label>
-              <label class="custom-checkbox text-rose">
-                <input type="checkbox" id="editRejectedAffair">
-                <span>Rejected Affair</span>
-              </label>
+          <!-- TAB 3: FINANCIALS & DATES -->
+          <div id="tabFinancials" class="drawer-tab-content">
+            <div class="drawer-section">
+              <div class="drawer-section-title"><i data-lucide="hash"></i> Tracking Numbers & Timeline</div>
+              <div class="form-grid" style="padding:0; gap:0.85rem;">
+                <div class="form-group">
+                  <label>Affaire Number</label>
+                  <input type="text" id="editAffaireNumber" class="form-control font-mono" placeholder="e.g. 1167154">
+                </div>
+                <div class="form-group">
+                  <label>Affaire Creation Date</label>
+                  <input type="date" id="editAffaireDate" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Offer Number</label>
+                  <input type="text" id="editOfferNumber" class="form-control font-mono" placeholder="e.g. 1000193860">
+                </div>
+                <div class="form-group">
+                  <label>Offer Reception Date</label>
+                  <input type="date" id="editOfferDate" class="form-control">
+                </div>
+              </div>
             </div>
-          </div>
 
-          <!-- Tracking Numbers & Dates Section -->
-          <div class="drawer-section">
-            <div class="drawer-section-title"><i data-lucide="calendar"></i> Tracking Details</div>
-            <div class="form-grid" style="padding:0; gap:0.75rem;">
-              <div class="form-group">
-                <label>Affaire Number</label>
-                <input type="text" id="editAffaireNumber" class="form-control" placeholder="e.g. 1167154">
-              </div>
-              <div class="form-group">
-                <label>Affaire Creation Date</label>
-                <input type="date" id="editAffaireDate" class="form-control">
-              </div>
-              <div class="form-group">
-                <label>Offer Number</label>
-                <input type="text" id="editOfferNumber" class="form-control" placeholder="e.g. 1000193860">
-              </div>
-              <div class="form-group">
-                <label>Offer Reception Date</label>
-                <input type="date" id="editOfferDate" class="form-control">
-              </div>
-              <div class="form-group">
-                <label>Offer Value ($ USD)</label>
-                <input type="number" step="0.01" min="0" id="editOfferValue" class="form-control" placeholder="0.00">
-              </div>
-              <div class="form-group">
-                <label>Pipeline Status</label>
-                <select id="editStatus" class="form-control">
-                  <option value="">Detection (Draft)</option>
-                  <option value="To Negotiate">To Negotiate</option>
-                  <option value="To Revalue">To Revalue</option>
-                  <option value="Negotiated">Negotiated (Forecast)</option>
-                  <option value="Ordered">Ordered 🟢</option>
-                  <option value="Lost">Lost ❌</option>
-                  <option value="Cancelled">Cancelled 🚫</option>
-                </select>
+            <div class="drawer-section">
+              <div class="drawer-section-title"><i data-lucide="badge-dollar-sign"></i> Deal Valuation & Stage Status</div>
+              <div class="form-grid" style="padding:0; gap:0.85rem;">
+                <div class="form-group">
+                  <label>Offer Value ($ USD)</label>
+                  <input type="number" step="0.01" min="0" id="editOfferValue" class="form-control font-mono" placeholder="0.00" style="font-weight:700; color:var(--accent-green);">
+                </div>
+                <div class="form-group">
+                  <label>Pipeline Status</label>
+                  <select id="editStatus" class="form-control">
+                    <option value="">Detection (Draft)</option>
+                    <option value="To Negotiate">To Negotiate</option>
+                    <option value="To Revalue">To Revalue</option>
+                    <option value="Negotiated">Negotiated (Forecast)</option>
+                    <option value="Ordered">Ordered 🟢</option>
+                    <option value="Lost">Lost ❌</option>
+                    <option value="Cancelled">Cancelled 🚫</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Notes Section -->
-          <div class="drawer-section">
-            <div class="drawer-section-title"><i data-lucide="file-text"></i> Notes & Follow-up</div>
-            <textarea id="editNotes" class="form-control" rows="3" placeholder="Enter follow-up notes or constraints..."></textarea>
-          </div>
         </form>
       </div>
 
       <div class="drawer-footer">
         <button type="button" class="btn btn-secondary" id="btnCancelDrawer">Cancel</button>
-        <button type="button" class="btn btn-primary" id="btnSaveDrawer">Save Changes</button>
+        <button type="button" class="btn btn-primary" id="btnSaveDrawer" style="min-width: 160px;">
+          <i data-lucide="check"></i> Save Changes
+        </button>
       </div>
     </div>
   </div>
@@ -650,6 +733,6 @@
   <!-- Notification Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>
