@@ -197,9 +197,12 @@ function initPINLock() {
 }
 
 // ── 6. SUPABASE CLOUD SYNC & DATA PERSISTENCE ─────────────────────────────
+const DEFAULT_SUPABASE_URL = "https://kcqycpkwtadmyslkyjxx.supabase.co";
+const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjcXljcGt3dGFkbXlzbGt5anh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MjMyNzQsImV4cCI6MjEwMTk5OTI3NH0.AyCa9dowfQZwiiRItFie_liXEBFbD0HWMi2JI9mfh08";
+
 function initSupabase() {
-  const url = localStorage.getItem("supabase_url");
-  const key = localStorage.getItem("supabase_key");
+  const url = localStorage.getItem("supabase_url") || DEFAULT_SUPABASE_URL;
+  const key = localStorage.getItem("supabase_key") || DEFAULT_SUPABASE_KEY;
   const connStatus = document.getElementById("connectionStatus");
 
   if (url && key && window.supabase) {
