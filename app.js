@@ -1,5 +1,5 @@
 /* ==========================================================================
-   PANAMA PURCHASING PIPELINE - WEB APPLICATION LOGIC
+   PANAMA PURCHASING PIPELINE - COMPLETE WEB APPLICATION ENGINE
    ========================================================================== */
 
 // ── 1. CONFIGURATION & CONSTANTS ──────────────────────────────────────────
@@ -60,6 +60,8 @@ let filteredDeals = [];
 let supabaseClient = null;
 let stageChartInstance = null;
 let activeView = "dashboard";
+let currentTheme = localStorage.getItem("app_theme") || "dark";
+let isCompactTable = localStorage.getItem("table_density") === "compact";
 
 // Filter State
 let filterPeriod = "All Time";
@@ -68,18 +70,19 @@ let filterBuyerVal = "All";
 let filterCategoryVal = "All";
 let filterSearchVal = "";
 let filterStaleOnlyVal = false;
+let filterOngoingOnlyVal = false;
 
 // ── 3. INITIALIZATION ─────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  initTheme();
   initLucide();
   initPINLock();
   initDropdowns();
   initTabs();
-  initModals();
+  initModalsAndDrawer();
   initFilters();
   initDragAndDrop();
 
-  // Try loading Supabase connection or local cache
   initSupabase();
   await loadDeals();
   applyFiltersAndRender();
@@ -91,47 +94,109 @@ function initLucide() {
   }
 }
 
-// ── 4. PIN ACCESS CONTROL ─────────────────────────────────────────────────
+// ── 4. LIGHT / DARK THEME ENGINE ──────────────────────────────────────────
+function initTheme() {
+  document.documentElement.setAttribute("data-theme", currentTheme);
+  updateThemeIcon();
+
+  const toggleBtn = document.getElementById("btnThemeToggle");
+  toggleBtn.addEventListener("click", () => {
+    currentTheme = currentTheme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", currentTheme);
+    localStorage.setItem("app_theme", currentTheme);
+    updateThemeIcon();
+    renderStageChart(); // Re-draw chart with theme colors
+    showToast("Theme Changed", `Switched to ${currentTheme} mode`);
+  });
+}
+
+function updateThemeIcon() {
+  const icon = document.getElementById("themeIcon");
+  if (icon) {
+    icon.setAttribute("data-lucide", currentTheme === "dark" ? "sun" : "moon");
+    initLucide();
+  }
+}
+
+// ── 5. MULTI-USER ACCESS CONTROL (TOBY, AHMED, CARLOS) ────────────────────
+const PIN_TO_USER = {
+  "2309": "Toby",
+  "0147": "Ahmed",
+  "7410": "Carlos"
+};
+
+let currentUser = sessionStorage.getItem("pipeline_user") || "Toby";
+
 function initPINLock() {
   const pinOverlay = document.getElementById("pinOverlay");
   const pinForm = document.getElementById("pinForm");
   const pinInput = document.getElementById("pinInput");
   const pinError = document.getElementById("pinError");
   const btnLockApp = document.getElementById("btnLockApp");
+  const activeUserPill = document.getElementById("activeUserName");
 
-  const storedPin = localStorage.getItem("team_pin") || "0000";
   const isUnlocked = sessionStorage.getItem("pipeline_unlocked") === "true";
-
-  if (isUnlocked) {
+  if (isUnlocked && currentUser) {
     pinOverlay.classList.add("unlocked");
+    pinOverlay.style.display = "none";
+    if (activeUserPill) activeUserPill.textContent = currentUser;
   }
 
-  pinForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const entered = pinInput.value.trim();
-    const currentPin = localStorage.getItem("team_pin") || "0000";
+  function attemptUnlock() {
+    const enteredPin = pinInput.value.trim();
+    if (!enteredPin) return;
 
-    if (entered === currentPin) {
+    const matchedUser = PIN_TO_USER[enteredPin];
+
+    if (matchedUser) {
+      currentUser = matchedUser;
       sessionStorage.setItem("pipeline_unlocked", "true");
+      sessionStorage.setItem("pipeline_user", currentUser);
+      if (activeUserPill) activeUserPill.textContent = currentUser;
+
       pinOverlay.classList.add("unlocked");
+      pinOverlay.style.display = "none";
       pinError.style.display = "none";
       pinInput.value = "";
-      showToast("Workspace Unlocked", "Welcome back!");
+      showToast("Workspace Unlocked", `Welcome back, ${currentUser}!`);
     } else {
+      pinError.textContent = "Incorrect PIN. Please check and try again.";
       pinError.style.display = "block";
       pinInput.value = "";
       pinInput.focus();
     }
+  }
+
+  // Handle Enter keypress explicitly
+  pinInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      attemptUnlock();
+    }
+  });
+
+  // Auto-submit as soon as 4 digits are typed
+  pinInput.addEventListener("input", () => {
+    if (pinInput.value.trim().length === 4) {
+      attemptUnlock();
+    }
+  });
+
+  pinForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    attemptUnlock();
   });
 
   btnLockApp.addEventListener("click", () => {
     sessionStorage.removeItem("pipeline_unlocked");
     pinOverlay.classList.remove("unlocked");
-    pinInput.focus();
+    pinOverlay.style.display = "flex";
+    pinInput.value = "";
+    setTimeout(() => pinInput.focus(), 200);
   });
 }
 
-// ── 5. SUPABASE CLOUD & DATA LOADER ───────────────────────────────────────
+// ── 6. SUPABASE CLOUD SYNC & DATA PERSISTENCE ─────────────────────────────
 function initSupabase() {
   const url = localStorage.getItem("supabase_url");
   const key = localStorage.getItem("supabase_key");
@@ -149,7 +214,7 @@ function initSupabase() {
         .on("postgres_changes", { event: "*", schema: "public", table: "detections" }, async () => {
           await fetchFromSupabase();
           applyFiltersAndRender();
-          showToast("Live Update", "Database synchronized with cloud");
+          showToast("Live Sync", "Database synchronized with cloud");
         })
         .subscribe();
     } catch (err) {
@@ -169,7 +234,7 @@ async function loadDeals() {
     if (success) return;
   }
 
-  // Fallback: load from localStorage or embedded initial data
+  // Fallback: local storage
   const local = localStorage.getItem("panama_pipeline_deals");
   if (local) {
     try {
@@ -178,7 +243,7 @@ async function loadDeals() {
     } catch (e) {}
   }
 
-  // Fallback to initial_data.json
+  // Fallback: initial_data.json
   try {
     const res = await fetch("initial_data.json");
     if (res.ok) {
@@ -186,7 +251,7 @@ async function loadDeals() {
       localStorage.setItem("panama_pipeline_deals", JSON.stringify(allDeals));
     }
   } catch (err) {
-    console.warn("Could not fetch initial_data.json, starting empty:", err);
+    console.warn("Could not fetch initial_data.json:", err);
     allDeals = [];
   }
 }
@@ -239,7 +304,7 @@ async function saveDealRecord(deal) {
   applyFiltersAndRender();
 }
 
-// ── 6. BUSINESS LOGIC & FORMULA EQUIVALENTS ──────────────────────────────
+// ── 7. BUSINESS LOGIC (EXCEL EQUIVALENT FORMULAS) ─────────────────────────
 function getDaysOpen(d) {
   if (!d.entry_date) return "";
   
@@ -263,7 +328,7 @@ function getDaysOpen(d) {
     if (!isNaN(affD)) return Math.max(0, Math.floor((today - affD) / (1000 * 60 * 60 * 24)));
   }
 
-  // Fallback to Entry Date
+  // Fallback: Entry Date
   const entD = new Date(d.entry_date);
   if (!isNaN(entD)) return Math.max(0, Math.floor((today - entD) / (1000 * 60 * 60 * 24)));
 
@@ -302,10 +367,11 @@ function getStageCategory(d) {
   return "detection";
 }
 
-// ── 7. FILTERS & PERIOD CONTROLS ──────────────────────────────────────────
+// ── 8. DROPDOWNS & FILTER INITIALIZATION ──────────────────────────────────
 function initDropdowns() {
   const catSelect = document.getElementById("filterCategory");
-  const formCatSelect = document.getElementById("formCategory");
+  const addCatSelect = document.getElementById("addCategory");
+  const editCatSelect = document.getElementById("editCategory");
 
   PRODUCT_RANGES.forEach(cat => {
     const opt = document.createElement("option");
@@ -313,8 +379,8 @@ function initDropdowns() {
     opt.textContent = cat;
     catSelect.appendChild(opt);
 
-    const formOpt = opt.cloneNode(true);
-    formCatSelect.appendChild(formOpt);
+    addCatSelect.appendChild(opt.cloneNode(true));
+    editCatSelect.appendChild(opt.cloneNode(true));
   });
 }
 
@@ -355,6 +421,31 @@ function initFilters() {
   staleToggle.addEventListener("change", (e) => {
     filterStaleOnlyVal = e.target.checked;
     applyFiltersAndRender();
+  });
+
+  const ongoingToggle = document.getElementById("filterOngoingOnly");
+  if (ongoingToggle) {
+    ongoingToggle.addEventListener("change", (e) => {
+      filterOngoingOnlyVal = e.target.checked;
+      applyFiltersAndRender();
+    });
+  }
+
+  // Table Density Toggle
+  const btnToggleDensity = document.getElementById("btnToggleDensity");
+  const tableEl = document.getElementById("mainPipelineTable");
+  const densityLabel = document.getElementById("densityLabel");
+
+  if (isCompactTable) {
+    tableEl.classList.add("compact");
+    densityLabel.textContent = "Comfortable Mode";
+  }
+
+  btnToggleDensity.addEventListener("click", () => {
+    isCompactTable = !isCompactTable;
+    tableEl.classList.toggle("compact", isCompactTable);
+    densityLabel.textContent = isCompactTable ? "Comfortable Mode" : "Compact Mode";
+    localStorage.setItem("table_density", isCompactTable ? "compact" : "comfortable");
   });
 }
 
@@ -406,6 +497,11 @@ function getISOWeek(d) {
 }
 
 function applyFiltersAndRender() {
+  // Calculate ongoing deals count for badge
+  const ongoingCount = allDeals.filter(d => getDaysOpen(d) !== "Closed").length;
+  const ongoingBadge = document.getElementById("ongoingCountBadge");
+  if (ongoingBadge) ongoingBadge.textContent = ongoingCount;
+
   filteredDeals = allDeals.filter(d => {
     // Period filter
     if (filterPeriod === "Monthly" && filterPeriodVal) {
@@ -434,7 +530,12 @@ function applyFiltersAndRender() {
       if (!match) return false;
     }
 
-    // Stale only filter
+    // Ongoing only filter (excludes all closed, lost, cancelled)
+    if (filterOngoingOnlyVal) {
+      if (getDaysOpen(d) === "Closed") return false;
+    }
+
+    // Stale filter
     if (filterStaleOnlyVal) {
       if (!getStaleAlert(d)) return false;
     }
@@ -448,9 +549,8 @@ function applyFiltersAndRender() {
   initLucide();
 }
 
-// ── 8. RENDER: DASHBOARD VIEW ─────────────────────────────────────────────
+// ── 9. RENDER: DASHBOARD VIEW ─────────────────────────────────────────────
 function renderDashboard() {
-  // KPI Calculations
   let totalDetections = filteredDeals.length;
   let activeValue = 0;
   let forecastValue = 0;
@@ -509,7 +609,6 @@ function renderDashboard() {
     const actVal = bDeals.filter(d => getDaysOpen(d) !== "Closed").reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
     const rate = detections > 0 ? ((ordDeals / detections) * 100).toFixed(1) + "%" : "0.0%";
 
-    // Offer Signal
     let signal = `<span class="badge badge-navy">⚫ No Offers</span>`;
     if (offers > 0) {
       if (fDeals > 0) {
@@ -574,7 +673,6 @@ function renderDashboard() {
     const pct = totalDetections > 0 ? ((count / totalDetections) * 100).toFixed(1) + "%" : "0.0%";
     const val = sDeals.reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
     
-    // Average days open
     const activeDays = sDeals.map(getDaysOpen).filter(d => typeof d === "number");
     const avgDays = activeDays.length > 0 ? Math.round(activeDays.reduce((a,b)=>a+b, 0) / activeDays.length) : "-";
 
@@ -594,7 +692,7 @@ function renderDashboard() {
   catTbody.innerHTML = "";
   PRODUCT_RANGES.forEach(cat => {
     const cDeals = filteredDeals.filter(d => d.product_range === cat);
-    if (cDeals.length === 0) return; // Only show active categories
+    if (cDeals.length === 0) return;
 
     const det = cDeals.length;
     const off = cDeals.filter(d => d.offer_received).length;
@@ -612,12 +710,13 @@ function renderDashboard() {
     catTbody.appendChild(tr);
   });
 
-  // Stage Breakdown Chart
   renderStageChart();
 }
 
 function renderStageChart() {
-  const ctx = document.getElementById("stageChart").getContext("2d");
+  const canvas = document.getElementById("stageChart");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
   
   const stageCounts = {
     "Detection": 0,
@@ -642,6 +741,10 @@ function renderStageChart() {
     stageChartInstance.destroy();
   }
 
+  const isDark = currentTheme === "dark";
+  const legendColor = isDark ? "#94A3B8" : "#475569";
+  const borderColor = isDark ? "#111827" : "#FFFFFF";
+
   stageChartInstance = new Chart(ctx, {
     type: "doughnut",
     data: {
@@ -649,15 +752,15 @@ function renderStageChart() {
       datasets: [{
         data: Object.values(stageCounts),
         backgroundColor: [
-          "#38BDF8", // Blue (Detection)
-          "#A855F7", // Purple (Affaire Sent)
-          "#EC4899", // Pink (Offer Recv)
-          "#818CF8", // Indigo (Forecast)
-          "#10B981", // Green (Ordered)
-          "#F43F5E"  // Rose (Closed)
+          "#38BDF8", // Blue
+          "#A855F7", // Purple
+          "#EC4899", // Pink
+          "#818CF8", // Indigo
+          "#10B981", // Green
+          "#F43F5E"  // Rose
         ],
         borderWidth: 2,
-        borderColor: "#111827"
+        borderColor: borderColor
       }]
     },
     options: {
@@ -666,7 +769,7 @@ function renderStageChart() {
       plugins: {
         legend: {
           position: "right",
-          labels: { color: "#94A3B8", font: { family: "Plus Jakarta Sans", size: 11 } }
+          labels: { color: legendColor, font: { family: "Plus Jakarta Sans", size: 11, weight: "600" } }
         }
       },
       cutout: "68%"
@@ -674,7 +777,7 @@ function renderStageChart() {
   });
 }
 
-// ── 9. RENDER: KANBAN BOARD VIEW ──────────────────────────────────────────
+// ── 10. RENDER: KANBAN BOARD VIEW ─────────────────────────────────────────
 function renderKanban() {
   const cols = {
     detection: document.getElementById("cardsDetection"),
@@ -724,7 +827,7 @@ function renderKanban() {
       </div>
     `;
 
-    card.addEventListener("click", () => openEditModal(deal));
+    card.addEventListener("click", () => openDrawer(deal));
 
     card.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData("text/plain", deal.id);
@@ -769,7 +872,6 @@ function initDragAndDrop() {
 
       const todayStr = new Date().toISOString().split("T")[0];
 
-      // Auto-update fields according to target stage
       if (targetStage === "detection") {
         deal.affaire_created = false;
         deal.affaire_sent = false;
@@ -802,12 +904,12 @@ function initDragAndDrop() {
       }
 
       await saveDealRecord(deal);
-      showToast("Status Updated", `${deal.supplier} moved to ${targetStage}`);
+      showToast("Stage Updated", `${deal.supplier} moved to ${targetStage}`);
     });
   });
 }
 
-// ── 10. RENDER: TABLE GRID VIEW ───────────────────────────────────────────
+// ── 11. RENDER: TABLE GRID VIEW ───────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById("pipelineTableBody");
   tbody.innerHTML = "";
@@ -840,22 +942,22 @@ function renderTable() {
       <td class="text-center font-bold">${days === "Closed" ? "<span class='text-rose'>Closed</span>" : days + " d"}</td>
       <td class="text-center">${stale ? `<span class="badge badge-stale">${stale}</span>` : "-"}</td>
       <td class="text-center">
-        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); window.editDealById(${deal.id})">
-          <i data-lucide="edit-2" style="width:14px;height:14px;"></i> Edit
+        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); window.openDrawerById(${deal.id})">
+          <i data-lucide="eye" style="width:13px;height:13px;"></i> Details
         </button>
       </td>
     `;
-    tr.addEventListener("click", () => openEditModal(deal));
+    tr.addEventListener("click", () => openDrawer(deal));
     tbody.appendChild(tr);
   });
 }
 
-window.editDealById = (id) => {
+window.openDrawerById = (id) => {
   const deal = allDeals.find(d => d.id === id);
-  if (deal) openEditModal(deal);
+  if (deal) openDrawer(deal);
 };
 
-// ── 11. MODALS & FORMS ────────────────────────────────────────────────────
+// ── 12. TAB SWITCHING & MODALS / DRAWER ────────────────────────────────────
 function initTabs() {
   const tabs = document.querySelectorAll(".nav-tab");
   tabs.forEach(tab => {
@@ -875,124 +977,182 @@ function initTabs() {
   });
 }
 
-function initModals() {
-  const detModal = document.getElementById("detectionModal");
+function initModalsAndDrawer() {
+  const addModal = document.getElementById("addDetectionModal");
+  const addForm = document.getElementById("addDetectionForm");
+  const drawerOverlay = document.getElementById("drawerOverlay");
   const settingsModal = document.getElementById("settingsModal");
-  const detForm = document.getElementById("detectionForm");
 
-  document.getElementById("btnOpenAddModal").addEventListener("click", () => openAddModal());
-  document.getElementById("btnCloseModal").addEventListener("click", () => detModal.classList.remove("open"));
-  document.getElementById("btnCancelModal").addEventListener("click", () => detModal.classList.remove("open"));
-
-  document.getElementById("btnOpenSettings").addEventListener("click", () => openSettingsModal());
-  document.getElementById("btnCloseSettings").addEventListener("click", () => settingsModal.classList.remove("open"));
-
-  detForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const dealId = document.getElementById("formDealId").value;
-    
-    const deal = {
-      id: dealId ? parseInt(dealId) : null,
-      entry_date: document.getElementById("formEntryDate").value,
-      buyer: document.getElementById("formBuyer").value,
-      supplier: document.getElementById("formSupplier").value,
-      product: document.getElementById("formProduct").value,
-      product_range: document.getElementById("formCategory").value,
-      status: document.getElementById("formStatus").value,
-      propo_canceled: document.getElementById("formPropoCanceled").checked,
-      affaire_created: document.getElementById("formAffaireCreated").checked,
-      affaire_date: document.getElementById("formAffaireDate").value || null,
-      affaire_number: document.getElementById("formAffaireNumber").value || null,
-      rejected_affair: document.getElementById("formRejectedAffair").checked,
-      affaire_sent: document.getElementById("formAffaireSent").checked,
-      offer_received: document.getElementById("formOfferReceived").checked,
-      offer_date: document.getElementById("formOfferDate").value || null,
-      offer_number: document.getElementById("formOfferNumber").value || null,
-      offer_value: parseFloat(document.getElementById("formOfferValue").value) || 0,
-      notes: document.getElementById("formNotes").value || ""
-    };
-
-    await saveDealRecord(deal);
-    detModal.classList.remove("open");
-    showToast("Detection Saved", `${deal.supplier} (${deal.product}) updated successfully.`);
+  // 1. Add Detection (Excel Rules Alignment)
+  document.getElementById("btnOpenAddModal").addEventListener("click", () => {
+    addForm.reset();
+    document.getElementById("addEntryDate").value = new Date().toISOString().split("T")[0];
+    addModal.classList.add("open");
+    initLucide();
   });
 
-  // Settings Save
+  document.getElementById("btnCloseAddModal").addEventListener("click", () => addModal.classList.remove("open"));
+  document.getElementById("btnCancelAddModal").addEventListener("click", () => addModal.classList.remove("open"));
+
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // Matching Excel rules: creates clean draft detection
+    const newDeal = {
+      id: null,
+      entry_date: document.getElementById("addEntryDate").value,
+      buyer: document.getElementById("addBuyer").value,
+      supplier: document.getElementById("addSupplier").value.trim(),
+      product: document.getElementById("addProduct").value.trim(),
+      product_range: document.getElementById("addCategory").value,
+      notes: document.getElementById("addNotes").value.trim(),
+      
+      // Auto-initialized fields
+      propo_canceled: false,
+      affaire_created: false,
+      affaire_date: null,
+      affaire_number: null,
+      rejected_affair: false,
+      affaire_sent: false,
+      offer_received: false,
+      offer_date: null,
+      offer_number: null,
+      offer_value: 0,
+      status: ""
+    };
+
+    await saveDealRecord(newDeal);
+    addModal.classList.remove("open");
+    showToast("Detection Created", `${newDeal.supplier} added to pipeline.`);
+  });
+
+  // 2. Slide-Over Detail & Edit Drawer
+  document.getElementById("btnCloseDrawer").addEventListener("click", () => drawerOverlay.classList.remove("open"));
+  document.getElementById("btnCancelDrawer").addEventListener("click", () => drawerOverlay.classList.remove("open"));
+
+  // Checkbox auto-date stamping in drawer
+  const editAffaireCreated = document.getElementById("editAffaireCreated");
+  const editAffaireDate = document.getElementById("editAffaireDate");
+  editAffaireCreated.addEventListener("change", () => {
+    if (editAffaireCreated.checked && !editAffaireDate.value) {
+      editAffaireDate.value = new Date().toISOString().split("T")[0];
+    } else if (!editAffaireCreated.checked) {
+      editAffaireDate.value = "";
+    }
+  });
+
+  const editOfferReceived = document.getElementById("editOfferReceived");
+  const editOfferDate = document.getElementById("editOfferDate");
+  editOfferReceived.addEventListener("change", () => {
+    if (editOfferReceived.checked && !editOfferDate.value) {
+      editOfferDate.value = new Date().toISOString().split("T")[0];
+    } else if (!editOfferReceived.checked) {
+      editOfferDate.value = "";
+    }
+  });
+
+  // Save drawer edits
+  document.getElementById("btnSaveDrawer").addEventListener("click", async () => {
+    const id = parseInt(document.getElementById("editDealId").value);
+    const deal = allDeals.find(d => d.id === id);
+    if (!deal) return;
+
+    deal.entry_date = document.getElementById("editEntryDate").value;
+    deal.buyer = document.getElementById("editBuyer").value;
+    deal.supplier = document.getElementById("editSupplier").value.trim();
+    deal.product = document.getElementById("editProduct").value.trim();
+    deal.product_range = document.getElementById("editCategory").value;
+
+    deal.affaire_created = document.getElementById("editAffaireCreated").checked;
+    deal.affaire_sent = document.getElementById("editAffaireSent").checked;
+    deal.offer_received = document.getElementById("editOfferReceived").checked;
+    deal.propo_canceled = document.getElementById("editPropoCanceled").checked;
+    deal.rejected_affair = document.getElementById("editRejectedAffair").checked;
+
+    deal.affaire_number = document.getElementById("editAffaireNumber").value.trim() || null;
+    deal.affaire_date = document.getElementById("editAffaireDate").value || null;
+    deal.offer_number = document.getElementById("editOfferNumber").value.trim() || null;
+    deal.offer_date = document.getElementById("editOfferDate").value || null;
+    deal.offer_value = parseFloat(document.getElementById("editOfferValue").value) || 0;
+    deal.status = document.getElementById("editStatus").value;
+    deal.notes = document.getElementById("editNotes").value.trim();
+
+    await saveDealRecord(deal);
+    drawerOverlay.classList.remove("open");
+    showToast("Changes Saved", `${deal.supplier} updated successfully.`);
+  });
+
+  // 3. Settings Modal
+  document.getElementById("btnOpenSettings").addEventListener("click", () => {
+    const urlEl = document.getElementById("cfgSupabaseUrl");
+    const keyEl = document.getElementById("cfgSupabaseKey");
+    if (urlEl) urlEl.value = localStorage.getItem("supabase_url") || "";
+    if (keyEl) keyEl.value = localStorage.getItem("supabase_key") || "";
+    settingsModal.classList.add("open");
+    initLucide();
+  });
+
+  document.getElementById("btnCloseSettings").addEventListener("click", () => settingsModal.classList.remove("open"));
+
   document.getElementById("btnSaveSettings").addEventListener("click", () => {
-    const url = document.getElementById("cfgSupabaseUrl").value.trim();
-    const key = document.getElementById("cfgSupabaseKey").value.trim();
-    const pin = document.getElementById("cfgTeamPin").value.trim() || "0000";
+    const urlEl = document.getElementById("cfgSupabaseUrl");
+    const keyEl = document.getElementById("cfgSupabaseKey");
+    const url = urlEl ? urlEl.value.trim() : "";
+    const key = keyEl ? keyEl.value.trim() : "";
 
     localStorage.setItem("supabase_url", url);
     localStorage.setItem("supabase_key", key);
-    localStorage.setItem("team_pin", pin);
 
     initSupabase();
     settingsModal.classList.remove("open");
-    showToast("Settings Saved", "Cloud configuration updated.");
+    showToast("Settings Saved", "Cloud database configuration updated.");
   });
 
-  // Reset to local data
   document.getElementById("btnResetToLocal").addEventListener("click", async () => {
     if (confirm("Reset local changes and reload initial dataset?")) {
       localStorage.removeItem("panama_pipeline_deals");
       await loadDeals();
       applyFiltersAndRender();
       settingsModal.classList.remove("open");
-      showToast("Reset Complete", "Local data restored to baseline.");
+      showToast("Reset Complete", "Data baseline restored.");
     }
   });
 
-  // CSV Exports
+  // 4. CSV Exports
   document.getElementById("btnExportCSV").addEventListener("click", exportCSV);
   document.getElementById("btnExportTableCSV").addEventListener("click", exportCSV);
 }
 
-function openAddModal() {
-  const form = document.getElementById("detectionForm");
-  form.reset();
-  document.getElementById("formDealId").value = "";
-  document.getElementById("modalTitle").innerHTML = `<i data-lucide="sparkle"></i> Add New Detection`;
-  document.getElementById("formEntryDate").value = new Date().toISOString().split("T")[0];
-  document.getElementById("detectionModal").classList.add("open");
+function openDrawer(deal) {
+  document.getElementById("editDealId").value = deal.id;
+  document.getElementById("drawerSupplierTitle").textContent = deal.supplier || `Deal #${deal.id}`;
+  document.getElementById("drawerBuyerBadge").textContent = `Assigned to: ${deal.buyer}`;
+
+  document.getElementById("editEntryDate").value = deal.entry_date || "";
+  document.getElementById("editBuyer").value = deal.buyer || "";
+  document.getElementById("editSupplier").value = deal.supplier || "";
+  document.getElementById("editProduct").value = deal.product || "";
+  document.getElementById("editCategory").value = deal.product_range || "";
+
+  document.getElementById("editAffaireCreated").checked = !!deal.affaire_created;
+  document.getElementById("editAffaireSent").checked = !!deal.affaire_sent;
+  document.getElementById("editOfferReceived").checked = !!deal.offer_received;
+  document.getElementById("editPropoCanceled").checked = !!deal.propo_canceled;
+  document.getElementById("editRejectedAffair").checked = !!deal.rejected_affair;
+
+  document.getElementById("editAffaireNumber").value = deal.affaire_number || "";
+  document.getElementById("editAffaireDate").value = deal.affaire_date || "";
+  document.getElementById("editOfferNumber").value = deal.offer_number || "";
+  document.getElementById("editOfferDate").value = deal.offer_date || "";
+  document.getElementById("editOfferValue").value = deal.offer_value || "";
+  document.getElementById("editStatus").value = deal.status || "";
+  document.getElementById("editNotes").value = deal.notes || "";
+
+  document.getElementById("drawerOverlay").classList.add("open");
   initLucide();
 }
 
-function openEditModal(deal) {
-  document.getElementById("formDealId").value = deal.id;
-  document.getElementById("modalTitle").innerHTML = `<i data-lucide="edit-2"></i> Edit Detection #${deal.id}`;
-  document.getElementById("formEntryDate").value = deal.entry_date || "";
-  document.getElementById("formBuyer").value = deal.buyer || "";
-  document.getElementById("formSupplier").value = deal.supplier || "";
-  document.getElementById("formProduct").value = deal.product || "";
-  document.getElementById("formCategory").value = deal.product_range || "";
-  document.getElementById("formStatus").value = deal.status || "";
-
-  document.getElementById("formPropoCanceled").checked = !!deal.propo_canceled;
-  document.getElementById("formAffaireCreated").checked = !!deal.affaire_created;
-  document.getElementById("formAffaireDate").value = deal.affaire_date || "";
-  document.getElementById("formAffaireNumber").value = deal.affaire_number || "";
-  document.getElementById("formRejectedAffair").checked = !!deal.rejected_affair;
-  document.getElementById("formAffaireSent").checked = !!deal.affaire_sent;
-  document.getElementById("formOfferReceived").checked = !!deal.offer_received;
-  document.getElementById("formOfferDate").value = deal.offer_date || "";
-  document.getElementById("formOfferNumber").value = deal.offer_number || "";
-  document.getElementById("formOfferValue").value = deal.offer_value || "";
-  document.getElementById("formNotes").value = deal.notes || "";
-
-  document.getElementById("detectionModal").classList.add("open");
-  initLucide();
-}
-
-function openSettingsModal() {
-  document.getElementById("cfgSupabaseUrl").value = localStorage.getItem("supabase_url") || "";
-  document.getElementById("cfgSupabaseKey").value = localStorage.getItem("supabase_key") || "";
-  document.getElementById("cfgTeamPin").value = localStorage.getItem("team_pin") || "0000";
-  document.getElementById("settingsModal").classList.add("open");
-  initLucide();
-}
-
-// ── 12. CSV EXPORT ────────────────────────────────────────────────────────
+// ── 13. CSV EXPORT ────────────────────────────────────────────────────────
 function exportCSV() {
   if (filteredDeals.length === 0) {
     alert("No records to export.");
@@ -1041,7 +1201,7 @@ function exportCSV() {
   showToast("Export Ready", "CSV file generated and downloaded.");
 }
 
-// ── 13. HELPERS ───────────────────────────────────────────────────────────
+// ── 14. HELPERS ───────────────────────────────────────────────────────────
 function formatCurrency(num) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

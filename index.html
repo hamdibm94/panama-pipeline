@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Panama Purchasing Pipeline · Live Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Chart.js -->
@@ -16,24 +16,28 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- PIN Lock Overlay -->
+  <!-- PIN Lock Overlay (Multi-User Login) -->
   <div id="pinOverlay" class="pin-overlay">
     <div class="pin-card">
       <div class="pin-icon"><i data-lucide="shield-check"></i></div>
       <h2>Panama Purchasing Pipeline</h2>
-      <p>Enter team access PIN to unlock the live workspace</p>
+      <p>Enter your 4-digit team access PIN</p>
+      
       <form id="pinForm">
-        <input type="password" id="pinInput" maxlength="6" placeholder="••••" autofocus required>
-        <button type="submit" class="btn btn-primary btn-block">Unlock Pipeline</button>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <input type="password" id="pinInput" maxlength="4" placeholder="••••" autofocus required>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="padding:0.75rem;">Unlock Workspace</button>
       </form>
-      <div id="pinError" class="pin-error">Incorrect PIN. Try again.</div>
-      <div class="pin-hint">Default PIN: <code>0000</code> (configurable in Settings)</div>
+
+      <div id="pinError" class="pin-error">Incorrect PIN. Please try again.</div>
     </div>
   </div>
 
   <!-- Main App Shell -->
   <div class="app-shell" id="appShell">
-    <!-- Sidebar / Top Navbar -->
+    <!-- Top Navbar -->
     <header class="navbar">
       <div class="nav-left">
         <div class="brand-logo">
@@ -61,8 +65,19 @@
       </div>
 
       <div class="nav-right">
+        <!-- Active User Badge -->
+        <div id="activeUserBadge" class="user-pill">
+          <i data-lucide="user"></i>
+          <span id="activeUserName">Toby</span>
+        </div>
+
+        <!-- Light / Dark Mode Toggle Button -->
+        <button id="btnThemeToggle" class="theme-toggle-btn" title="Toggle Light / Dark Mode">
+          <i data-lucide="sun" id="themeIcon"></i>
+        </button>
+
         <!-- Live Connection Status Indicator -->
-        <div id="connectionStatus" class="connection-status offline" title="Click Settings to connect Supabase Cloud">
+        <div id="connectionStatus" class="connection-status offline" title="Click Settings to configure Supabase Cloud">
           <span class="status-dot"></span>
           <span class="status-text">Local Mode</span>
         </div>
@@ -81,13 +96,13 @@
           <i data-lucide="settings"></i>
         </button>
 
-        <button id="btnLockApp" class="btn btn-icon" title="Lock Workspace">
-          <i data-lucide="lock"></i>
+        <button id="btnLockApp" class="btn btn-icon" title="Sign Out & Lock Workspace">
+          <i data-lucide="log-out"></i>
         </button>
       </div>
     </header>
 
-    <!-- Global Controls & Filters Bar -->
+    <!-- Global Filters Bar -->
     <div class="filters-bar">
       <div class="filter-group">
         <label><i data-lucide="calendar"></i> Period:</label>
@@ -124,12 +139,22 @@
         <input type="text" id="searchInput" placeholder="Search supplier, product, affaire #, offer #...">
       </div>
 
-      <div class="stale-toggle-group">
-        <label class="toggle-switch">
-          <input type="checkbox" id="filterStaleOnly">
-          <span class="slider"></span>
-        </label>
-        <span class="toggle-label">Show Stale Alerts Only (<span id="staleCountBadge">0</span>)</span>
+      <div class="toggle-group-wrapper">
+        <div class="toggle-item">
+          <label class="toggle-switch">
+            <input type="checkbox" id="filterOngoingOnly">
+            <span class="slider slider-green"></span>
+          </label>
+          <span class="toggle-label text-green">Ongoing Only (<span id="ongoingCountBadge">0</span>)</span>
+        </div>
+
+        <div class="toggle-item">
+          <label class="toggle-switch">
+            <input type="checkbox" id="filterStaleOnly">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Stale Only (<span id="staleCountBadge">0</span>)</span>
+        </div>
       </div>
     </div>
 
@@ -357,13 +382,16 @@
               Showing <span id="tableFilteredCount" class="font-bold">0</span> of <span id="tableTotalCount">0</span> deals
             </div>
             <div class="table-buttons">
+              <button class="btn btn-secondary btn-sm" id="btnToggleDensity">
+                <i data-lucide="rows"></i> <span id="densityLabel">Compact Mode</span>
+              </button>
               <button class="btn btn-secondary btn-sm" id="btnExportTableCSV">
                 <i data-lucide="file-spreadsheet"></i> Export Filtered View
               </button>
             </div>
           </div>
 
-          <div class="table-responsive full-height">
+          <div class="table-responsive">
             <table class="data-table interactive-table" id="mainPipelineTable">
               <thead>
                 <tr>
@@ -390,26 +418,25 @@
     </main>
   </div>
 
-  <!-- ================= ADD / EDIT DETECTION MODAL ================= -->
-  <div id="detectionModal" class="modal-overlay">
+  <!-- ================= ADD DETECTION MODAL (EXCEL RULES MATCH) ================= -->
+  <div id="addDetectionModal" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 id="modalTitle"><i data-lucide="sparkle"></i> Add New Detection</h3>
-        <button class="btn-close" id="btnCloseModal">&times;</button>
+        <h3><i data-lucide="plus-circle"></i> Add New Detection</h3>
+        <button class="btn-close" id="btnCloseAddModal">&times;</button>
       </div>
 
-      <form id="detectionForm">
-        <input type="hidden" id="formDealId">
+      <form id="addDetectionForm">
         <div class="form-grid">
           
           <div class="form-group">
-            <label for="formEntryDate">Entry Date *</label>
-            <input type="date" id="formEntryDate" class="form-control" required>
+            <label for="addEntryDate">Entry Date *</label>
+            <input type="date" id="addEntryDate" class="form-control" required>
           </div>
 
           <div class="form-group">
-            <label for="formBuyer">Buyer *</label>
-            <select id="formBuyer" class="form-control" required>
+            <label for="addBuyer">Buyer *</label>
+            <select id="addBuyer" class="form-control" required>
               <option value="">Select Buyer...</option>
               <option value="Ashley Jaen">Ashley Jaen</option>
               <option value="Daniel Fung">Daniel Fung</option>
@@ -421,100 +448,161 @@
           </div>
 
           <div class="form-group full-width">
-            <label for="formSupplier">Supplier Name *</label>
-            <input type="text" id="formSupplier" class="form-control" placeholder="e.g. Acme Textile S.A." required>
+            <label for="addSupplier">Supplier Name *</label>
+            <input type="text" id="addSupplier" class="form-control" placeholder="e.g. Acme Textile S.A." required>
           </div>
 
           <div class="form-group full-width">
-            <label for="formProduct">Product Description *</label>
-            <input type="text" id="formProduct" class="form-control" placeholder="e.g. 50,000 pcs Cotton Polo Shirts" required>
-          </div>
-
-          <div class="form-group">
-            <label for="formCategory">Product Range (Category) *</label>
-            <select id="formCategory" class="form-control" required></select>
-          </div>
-
-          <div class="form-group">
-            <label for="formStatus">Pipeline Status</label>
-            <select id="formStatus" class="form-control">
-              <option value="">Detection (Draft)</option>
-              <option value="To Negotiate">To Negotiate</option>
-              <option value="To Revalue">To Revalue</option>
-              <option value="Negotiated">Negotiated (Forecast)</option>
-              <option value="Ordered">Ordered 🟢</option>
-              <option value="Lost">Lost ❌</option>
-              <option value="Cancelled">Cancelled 🚫</option>
-            </select>
-          </div>
-
-          <!-- Progression Stage Checkboxes & Fields -->
-          <div class="form-section-title full-width">Pipeline Progression Details</div>
-
-          <div class="checkbox-row full-width">
-            <label class="custom-checkbox">
-              <input type="checkbox" id="formAffaireCreated">
-              <span class="checkmark"></span>
-              <span>Affaire Created?</span>
-            </label>
-            <label class="custom-checkbox">
-              <input type="checkbox" id="formAffaireSent">
-              <span class="checkmark"></span>
-              <span>Affaire Sent?</span>
-            </label>
-            <label class="custom-checkbox">
-              <input type="checkbox" id="formOfferReceived">
-              <span class="checkmark"></span>
-              <span>Offer Received?</span>
-            </label>
-            <label class="custom-checkbox">
-              <input type="checkbox" id="formPropoCanceled">
-              <span class="checkmark text-rose"></span>
-              <span>Propo Canceled</span>
-            </label>
-            <label class="custom-checkbox">
-              <input type="checkbox" id="formRejectedAffair">
-              <span class="checkmark text-rose"></span>
-              <span>Rejected Affair</span>
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label for="formAffaireNumber">Affaire Number</label>
-            <input type="text" id="formAffaireNumber" class="form-control" placeholder="e.g. 1167154">
-          </div>
-
-          <div class="form-group">
-            <label for="formAffaireDate">Affaire Creation Date</label>
-            <input type="date" id="formAffaireDate" class="form-control">
-          </div>
-
-          <div class="form-group">
-            <label for="formOfferNumber">Offer Number</label>
-            <input type="text" id="formOfferNumber" class="form-control" placeholder="e.g. 1000193860">
-          </div>
-
-          <div class="form-group">
-            <label for="formOfferDate">Offer Reception Date</label>
-            <input type="date" id="formOfferDate" class="form-control">
-          </div>
-
-          <div class="form-group">
-            <label for="formOfferValue">Offer Value ($ USD)</label>
-            <input type="number" step="0.01" min="0" id="formOfferValue" class="form-control" placeholder="0.00">
+            <label for="addProduct">Product Description *</label>
+            <input type="text" id="addProduct" class="form-control" placeholder="e.g. 50,000 pcs Cotton Polo Shirts" required>
           </div>
 
           <div class="form-group full-width">
-            <label for="formNotes">Notes & Follow-up</label>
-            <textarea id="formNotes" class="form-control" rows="2" placeholder="Add follow-up comments or supplier constraints..."></textarea>
+            <label for="addCategory">Product Range (Category) *</label>
+            <select id="addCategory" class="form-control" required></select>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="addNotes">Notes & Follow-up (Optional)</label>
+            <textarea id="addNotes" class="form-control" rows="2" placeholder="Add any supplier constraints or initial follow-up notes..."></textarea>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="btnCancelModal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="btnSaveDeal">Save Detection</button>
+          <button type="button" class="btn btn-secondary" id="btnCancelAddModal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Detection</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ================= SLIDE-OVER DEAL DETAIL & EDIT DRAWER ================= -->
+  <div id="drawerOverlay" class="drawer-overlay">
+    <div class="drawer-panel" id="dealDrawer">
+      <div class="drawer-header">
+        <div>
+          <h3 id="drawerSupplierTitle">Deal Details</h3>
+          <span class="text-muted" id="drawerBuyerBadge">Buyer Name</span>
+        </div>
+        <button class="btn-close" id="btnCloseDrawer">&times;</button>
+      </div>
+
+      <div class="drawer-body">
+        <form id="drawerEditForm">
+          <input type="hidden" id="editDealId">
+          
+          <!-- Basic Info Section -->
+          <div class="drawer-section">
+            <div class="drawer-section-title"><i data-lucide="info"></i> Basic Information</div>
+            <div class="form-grid" style="padding:0; gap:0.75rem;">
+              <div class="form-group">
+                <label>Entry Date</label>
+                <input type="date" id="editEntryDate" class="form-control" required>
+              </div>
+              <div class="form-group">
+                <label>Buyer</label>
+                <select id="editBuyer" class="form-control" required>
+                  <option value="Ashley Jaen">Ashley Jaen</option>
+                  <option value="Daniel Fung">Daniel Fung</option>
+                  <option value="Jessica Cruz">Jessica Cruz</option>
+                  <option value="Jorge Chandeck">Jorge Chandeck</option>
+                  <option value="Julio Arispe">Julio Arispe</option>
+                  <option value="Marian Rovira">Marian Rovira</option>
+                </select>
+              </div>
+              <div class="form-group full-width">
+                <label>Supplier</label>
+                <input type="text" id="editSupplier" class="form-control" required>
+              </div>
+              <div class="form-group full-width">
+                <label>Product</label>
+                <input type="text" id="editProduct" class="form-control" required>
+              </div>
+              <div class="form-group full-width">
+                <label>Product Range (Category)</label>
+                <select id="editCategory" class="form-control" required></select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progression Checkboxes Section -->
+          <div class="drawer-section">
+            <div class="drawer-section-title"><i data-lucide="check-square"></i> Stage Progression</div>
+            <div class="checkbox-row">
+              <label class="custom-checkbox">
+                <input type="checkbox" id="editAffaireCreated">
+                <span>Affaire Created?</span>
+              </label>
+              <label class="custom-checkbox">
+                <input type="checkbox" id="editAffaireSent">
+                <span>Affaire Sent?</span>
+              </label>
+              <label class="custom-checkbox">
+                <input type="checkbox" id="editOfferReceived">
+                <span>Offer Received?</span>
+              </label>
+              <label class="custom-checkbox text-rose">
+                <input type="checkbox" id="editPropoCanceled">
+                <span>Propo Canceled</span>
+              </label>
+              <label class="custom-checkbox text-rose">
+                <input type="checkbox" id="editRejectedAffair">
+                <span>Rejected Affair</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Tracking Numbers & Dates Section -->
+          <div class="drawer-section">
+            <div class="drawer-section-title"><i data-lucide="calendar"></i> Tracking Details</div>
+            <div class="form-grid" style="padding:0; gap:0.75rem;">
+              <div class="form-group">
+                <label>Affaire Number</label>
+                <input type="text" id="editAffaireNumber" class="form-control" placeholder="e.g. 1167154">
+              </div>
+              <div class="form-group">
+                <label>Affaire Creation Date</label>
+                <input type="date" id="editAffaireDate" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Offer Number</label>
+                <input type="text" id="editOfferNumber" class="form-control" placeholder="e.g. 1000193860">
+              </div>
+              <div class="form-group">
+                <label>Offer Reception Date</label>
+                <input type="date" id="editOfferDate" class="form-control">
+              </div>
+              <div class="form-group">
+                <label>Offer Value ($ USD)</label>
+                <input type="number" step="0.01" min="0" id="editOfferValue" class="form-control" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label>Pipeline Status</label>
+                <select id="editStatus" class="form-control">
+                  <option value="">Detection (Draft)</option>
+                  <option value="To Negotiate">To Negotiate</option>
+                  <option value="To Revalue">To Revalue</option>
+                  <option value="Negotiated">Negotiated (Forecast)</option>
+                  <option value="Ordered">Ordered 🟢</option>
+                  <option value="Lost">Lost ❌</option>
+                  <option value="Cancelled">Cancelled 🚫</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes Section -->
+          <div class="drawer-section">
+            <div class="drawer-section-title"><i data-lucide="file-text"></i> Notes & Follow-up</div>
+            <textarea id="editNotes" class="form-control" rows="3" placeholder="Enter follow-up notes or constraints..."></textarea>
+          </div>
+        </form>
+      </div>
+
+      <div class="drawer-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelDrawer">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnSaveDrawer">Save Changes</button>
+      </div>
     </div>
   </div>
 
@@ -531,7 +619,7 @@
           <i data-lucide="info"></i>
           <div>
             <strong>Real-time Supabase Cloud Sync</strong><br>
-            Connect your free Supabase database to share updates instantly with your colleague.
+            Connect your Supabase database to share updates live across all devices.
           </div>
         </div>
 
@@ -543,12 +631,6 @@
         <div class="form-group">
           <label for="cfgSupabaseKey">Supabase Anon Public API Key</label>
           <input type="password" id="cfgSupabaseKey" class="form-control" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6...">
-        </div>
-
-        <div class="form-group">
-          <label for="cfgTeamPin">Team Access PIN</label>
-          <input type="password" id="cfgTeamPin" class="form-control" placeholder="0000" maxlength="6">
-          <small class="text-muted">Used by team members to unlock this application.</small>
         </div>
 
         <div class="divider"></div>
