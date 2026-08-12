@@ -117,17 +117,34 @@ function updateThemeIcon() {
   }
 }
 
-// ── 5. MULTI-USER ACCESS CONTROL (TOBY, AHMED, CARLOS) ────────────────────
-const PIN_TO_USER = {
-  "2309": "Toby",
-  "0147": "Ahmed",
-  "7410": "Carlos"
-};
+// ── 5. MULTI-USER ACCESS CONTROL & ACCOUNT ENGINE ─────────────────────────
+const DEFAULT_ACCOUNTS = [
+  { name: "Toby", role: "Admin", pin: "2309" },
+  { name: "Ahmed", role: "Manager", pin: "0147" },
+  { name: "Carlos", role: "Team Member", pin: "7410" }
+];
+
+function getUserAccounts() {
+  const saved = localStorage.getItem("panama_user_accounts");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch(e) {}
+  }
+  return DEFAULT_ACCOUNTS;
+}
+
+function saveUserAccounts(accounts) {
+  localStorage.setItem("panama_user_accounts", JSON.stringify(accounts));
+}
 
 let currentUser = sessionStorage.getItem("pipeline_user") || "Toby";
 
 function isAdmin() {
-  return currentUser === "Toby";
+  const accounts = getUserAccounts();
+  const acc = accounts.find(a => a.name === currentUser);
+  return acc ? acc.role === "Admin" : currentUser === "Toby";
 }
 
 let globalAuditLogs = JSON.parse(localStorage.getItem("panama_audit_logs") || "[]");
@@ -235,10 +252,11 @@ function initPINLock() {
     const enteredPin = pinInput.value.trim();
     if (!enteredPin) return;
 
-    const matchedUser = PIN_TO_USER[enteredPin];
+    const accounts = getUserAccounts();
+    const matchedAccount = accounts.find(a => a.pin === enteredPin);
 
-    if (matchedUser) {
-      currentUser = matchedUser;
+    if (matchedAccount) {
+      currentUser = matchedAccount.name;
       sessionStorage.setItem("pipeline_unlocked", "true");
       sessionStorage.setItem("pipeline_user", currentUser);
       updateAdminUI();
@@ -247,7 +265,7 @@ function initPINLock() {
       pinOverlay.style.display = "none";
       pinError.style.display = "none";
       pinInput.value = "";
-      showToast("Workspace Unlocked", `Welcome back, ${currentUser}!`);
+      showToast("Workspace Unlocked", `Welcome back, ${currentUser} (${matchedAccount.role})!`);
     } else {
       pinError.textContent = "Incorrect PIN. Please check and try again.";
       pinError.style.display = "block";
@@ -459,6 +477,15 @@ function getStageCategory(d) {
   return "detection";
 }
 
+function getStageLabel(d) {
+  if (d.propo_canceled || d.rejected_affair || d.status === "Lost" || d.status === "Cancelled") return "Closed/Lost";
+  if (d.status === "Ordered") return "Ordered";
+  if (d.status === "Negotiated") return "Forecast";
+  if (d.offer_received || d.status === "To Negotiate" || d.status === "To Revalue") return "Offer Received";
+  if (d.affaire_sent || d.affaire_created) return "Affaire Sent";
+  return "Detection";
+}
+
 // ── 8. DROPDOWNS & FILTER INITIALIZATION ──────────────────────────────────
 function initDropdowns() {
   const catSelect = document.getElementById("filterCategory");
@@ -477,12 +504,19 @@ function initDropdowns() {
 }
 
 function initFilters() {
+  const tSelect = document.getElementById("filterTeam");
   const pType = document.getElementById("filterPeriodType");
   const pVal = document.getElementById("filterPeriodValue");
   const bSelect = document.getElementById("filterBuyer");
   const cSelect = document.getElementById("filterCategory");
   const sInput = document.getElementById("searchInput");
   const staleToggle = document.getElementById("filterStaleOnly");
+
+  if (tSelect) {
+    tSelect.addEventListener("change", () => {
+      applyFiltersAndRender();
+    });
+  }
 
   pType.addEventListener("change", () => {
     filterPeriod = pType.value;
@@ -614,6 +648,13 @@ function applyFiltersAndRender() {
   if (ongoingBadge) ongoingBadge.textContent = ongoingCount;
 
   filteredDeals = allDeals.filter(d => {
+    // Team filter
+    const tSelect = document.getElementById("filterTeam");
+    if (tSelect && tSelect.value !== "All") {
+      const dealTeam = d.team || "Panama";
+      if (dealTeam !== tSelect.value) return false;
+    }
+
     // Period filter
     if (filterPeriod === "Monthly" && filterPeriodVal) {
       if (!d.entry_date || !d.entry_date.startsWith(filterPeriodVal)) return false;
@@ -678,6 +719,13 @@ function applyFiltersAndRender() {
 
 // ── 9. RENDER: DASHBOARD VIEW ─────────────────────────────────────────────
 function renderDashboard() {
+  const tSelect = document.getElementById("filterTeam");
+  const teamVal = tSelect ? tSelect.value : "All";
+  const teamBadge = document.getElementById("buyerFunnelTeamBadge");
+  if (teamBadge) {
+    teamBadge.textContent = teamVal === "All" ? "All Teams" : `${teamVal} Team`;
+  }
+
   let totalDetections = filteredDeals.length;
   let activeValue = 0;
   let forecastValue = 0;
@@ -770,7 +818,6 @@ function renderDashboard() {
       <td class="text-center text-green font-bold">${formatCurrency(ordVal)}</td>
       <td class="text-center text-green font-bold">${formatCurrency(actVal)}</td>
       <td class="text-center">${rate}</td>
-      <td class="text-center">${signal}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -789,7 +836,6 @@ function renderDashboard() {
       <td class="text-center">${formatCurrency(tOVal)}</td>
       <td class="text-center">${formatCurrency(tAVal)}</td>
       <td class="text-center">${totRate}</td>
-      <td class="text-center">⭐ Team Signal</td>
     </tr>
   `;
 
@@ -847,10 +893,6 @@ function renderDashboard() {
 }
 
 function renderStageChart() {
-  const canvas = document.getElementById("stageChart");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  
   const stageCounts = {
     "Detection": 0,
     "Affaire Sent": 0,
@@ -880,10 +922,9 @@ function renderStageChart() {
     else { stageCounts["Closed/Lost"]++; stageValues["Closed/Lost"] += val; }
   });
 
-  // Populate Stage Metrics Breakdown Table below Chart
+  const totalDeals = filteredDeals.length;
   const breakdownTbody = document.getElementById("stageBreakdownBody");
   if (breakdownTbody) {
-    const totalDeals = filteredDeals.length;
     breakdownTbody.innerHTML = Object.keys(stageCounts).map(st => {
       const cnt = stageCounts[st];
       const val = stageValues[st];
@@ -899,44 +940,29 @@ function renderStageChart() {
     }).join("");
   }
 
-  if (stageChartInstance) {
-    stageChartInstance.destroy();
+  // Update Stage Share Progress Bar & Health Summary
+  if (totalDeals > 0) {
+    const pDet = ((stageCounts["Detection"] / totalDeals) * 100).toFixed(1);
+    const pSent = ((stageCounts["Affaire Sent"] / totalDeals) * 100).toFixed(1);
+    const pOff = ((stageCounts["Offer Recv"] / totalDeals) * 100).toFixed(1);
+    const pFore = ((stageCounts["Forecast"] / totalDeals) * 100).toFixed(1);
+    const pOrd = ((stageCounts["Ordered"] / totalDeals) * 100).toFixed(1);
+    const pClosed = ((stageCounts["Closed/Lost"] / totalDeals) * 100).toFixed(1);
+
+    const activeCnt = stageCounts["Detection"] + stageCounts["Affaire Sent"] + stageCounts["Offer Recv"] + stageCounts["Forecast"];
+    const activePct = (((activeCnt) / totalDeals) * 100).toFixed(1);
+
+    const elDet = document.getElementById("barSegDetection"); if (elDet) elDet.style.width = pDet + "%";
+    const elSent = document.getElementById("barSegSent"); if (elSent) elSent.style.width = pSent + "%";
+    const elOff = document.getElementById("barSegOffer"); if (elOff) elOff.style.width = pOff + "%";
+    const elFore = document.getElementById("barSegForecast"); if (elFore) elFore.style.width = pFore + "%";
+    const elOrd = document.getElementById("barSegOrdered"); if (elOrd) elOrd.style.width = pOrd + "%";
+    const elClosed = document.getElementById("barSegClosed"); if (elClosed) elClosed.style.width = pClosed + "%";
+
+    const elActPct = document.getElementById("activeSharePct"); if (elActPct) elActPct.textContent = `${activePct}% Active`;
+    const elActCnt = document.getElementById("activeDealsCount"); if (elActCnt) elActCnt.textContent = `${activeCnt} Deals`;
+    const elOrdVal = document.getElementById("orderedDealsCount"); if (elOrdVal) elOrdVal.textContent = formatCurrency(stageValues["Ordered"]);
   }
-
-  const isDark = currentTheme === "dark";
-  const legendColor = isDark ? "#94A3B8" : "#475569";
-  const borderColor = isDark ? "#111827" : "#FFFFFF";
-
-  stageChartInstance = new Chart(ctx, {
-    type: "doughnut",
-    data: {
-      labels: Object.keys(stageCounts),
-      datasets: [{
-        data: Object.values(stageCounts),
-        backgroundColor: [
-          "#38BDF8", // Blue
-          "#A855F7", // Purple
-          "#EC4899", // Pink
-          "#818CF8", // Indigo
-          "#10B981", // Green
-          "#F43F5E"  // Rose
-        ],
-        borderWidth: 2,
-        borderColor: borderColor
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: "right",
-          labels: { color: legendColor, font: { family: "Plus Jakarta Sans", size: 11, weight: "600" } }
-        }
-      },
-      cutout: "68%"
-    }
-  });
 }
 
 // ── 11. RENDER: TABLE GRID VIEW ───────────────────────────────────────────
@@ -1039,6 +1065,7 @@ function initModalsAndDrawer() {
     // Matching Excel rules: creates clean draft detection
     const newDeal = {
       id: null,
+      team: document.getElementById("addTeam") ? document.getElementById("addTeam").value : "Panama",
       entry_date: document.getElementById("addEntryDate").value,
       buyer: document.getElementById("addBuyer").value,
       supplier: document.getElementById("addSupplier").value.trim(),
@@ -1158,8 +1185,16 @@ function initModalsAndDrawer() {
       return;
     }
 
+    // Capture state prior to updates for audit log tracking
+    const oldStageLabel = getStageLabel(deal);
+    const oldStatus = deal.status || "";
+    const oldAffaireSent = !!deal.affaire_sent;
+    const oldOfferReceived = !!deal.offer_received;
+    const oldOfferValue = parseFloat(deal.offer_value) || 0;
+
     deal.entry_date = document.getElementById("editEntryDate").value;
     deal.buyer = document.getElementById("editBuyer").value;
+    deal.team = document.getElementById("editTeam") ? document.getElementById("editTeam").value : "Panama";
     deal.supplier = document.getElementById("editSupplier").value.trim();
     deal.product = document.getElementById("editProduct").value.trim();
     deal.product_range = document.getElementById("editCategory").value;
@@ -1177,9 +1212,53 @@ function initModalsAndDrawer() {
     deal.offer_value = parseFloat(document.getElementById("editOfferValue").value) || 0;
     deal.status = document.getElementById("editStatus").value;
 
+    // Detect stage / status / financial changes and log to changelog history
+    const newStageLabel = getStageLabel(deal);
+    const newStatus = deal.status || "";
+    const newAffaireSent = !!deal.affaire_sent;
+    const newOfferReceived = !!deal.offer_received;
+    const newOfferValue = parseFloat(deal.offer_value) || 0;
+
+    const changes = [];
+
+    if (oldStageLabel !== newStageLabel) {
+      changes.push(`Stage: "${oldStageLabel}" ➔ "${newStageLabel}"`);
+    } else if (oldStatus !== newStatus && newStatus !== "") {
+      changes.push(`Status: "${oldStatus || 'Draft'}" ➔ "${newStatus}"`);
+    }
+
+    if (!oldAffaireSent && newAffaireSent) {
+      const affNo = deal.affaire_number ? `#${deal.affaire_number}` : '';
+      changes.push(`Affaire Sent ${affNo}`.trim());
+    }
+
+    if (!oldOfferReceived && newOfferReceived) {
+      const offNo = deal.offer_number ? `#${deal.offer_number}` : '';
+      changes.push(`Offer Received ${offNo}`.trim());
+    }
+
+    if (oldOfferValue !== newOfferValue && newOfferValue > 0) {
+      changes.push(`Offer Value: ${oldOfferValue > 0 ? formatCurrency(oldOfferValue) : '$0'} ➔ ${formatCurrency(newOfferValue)}`);
+    }
+
+    if (changes.length > 0) {
+      const now = new Date();
+      const dateStr = now.toISOString().split("T")[0];
+      const timeStr = now.toTimeString().substring(0, 5);
+      const logHeader = `[${dateStr} ${timeStr} · ${currentUser}]`;
+      const statusLogEntry = `${logHeader}: 🔄 ${changes.join(" | ")}`;
+
+      if (deal.notes && deal.notes.trim()) {
+        deal.notes = `${deal.notes.trim()}\n${statusLogEntry}`;
+      } else {
+        deal.notes = statusLogEntry;
+      }
+    }
+
     await saveDealRecord(deal);
-    recordAuditLog("Updated Deal", deal.supplier, `Stage: ${getDealStage(deal)} · Value: $${deal.offer_value || 0} by ${currentUser}`, deal.id);
+    recordAuditLog("Updated Deal", deal.supplier, `Stage: ${newStageLabel} · Value: $${deal.offer_value || 0} by ${currentUser}`, deal.id);
     drawerOverlay.classList.remove("open");
+    applyFiltersAndRender();
     showToast("Changes Saved", `${deal.supplier} updated successfully.`);
   });
 
@@ -1260,6 +1339,65 @@ function initModalsAndDrawer() {
     }
   });
 
+  // Admin Database Factory Reset with 2-step confirmation
+  const btnResetDatabase = document.getElementById("btnResetDatabase");
+  if (btnResetDatabase) {
+    btnResetDatabase.addEventListener("click", async () => {
+      if (!isAdmin()) {
+        showToast("Unauthorized", "Database factory reset is strictly restricted to Admin Toby.");
+        return;
+      }
+
+      const confirmStep1 = confirm(
+        "🚨 DANGER ZONE: FACTORY RESET DATABASE\n\n" +
+        "This will permanently delete all deal updates, custom notes, and newly added pipeline records, " +
+        "and restore the database back to its default factory baseline.\n\n" +
+        "Are you sure you want to proceed?"
+      );
+
+      if (!confirmStep1) return;
+
+      const userInput = prompt('⚠️ FINAL CONFIRMATION: Type "RESET" in all capital letters to wipe and restore database:');
+      if (userInput !== "RESET") {
+        showToast("Reset Canceled", "Database reset was canceled due to incorrect confirmation text.");
+        return;
+      }
+
+      localStorage.removeItem("panama_pipeline_deals");
+      try {
+        const res = await fetch("initial_data.json");
+        if (res.ok) {
+          allDeals = await res.json();
+        } else {
+          allDeals = [];
+        }
+      } catch (err) {
+        allDeals = [];
+      }
+      localStorage.setItem("panama_pipeline_deals", JSON.stringify(allDeals));
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from("detections").delete().neq("id", 0);
+          for (const d of allDeals) {
+            const { id, ...cleanDeal } = d;
+            await supabaseClient.from("detections").insert(cleanDeal);
+          }
+        } catch (err) {
+          console.error("Supabase reset error:", err);
+        }
+      }
+
+      recordAuditLog("Database Reset", "System", `Full pipeline database factory reset executed by Admin (${currentUser}).`);
+
+      const settingsModal = document.getElementById("settingsModal");
+      if (settingsModal) settingsModal.classList.remove("open");
+
+      applyFiltersAndRender();
+      showToast("Database Reset Complete", "Pipeline data restored to factory baseline.");
+    });
+  }
+
   // Team Change Logs Modal
   const auditModal = document.getElementById("auditModal");
   const btnOpenAuditLogs = document.getElementById("btnOpenAuditLogs");
@@ -1302,10 +1440,140 @@ function initModalsAndDrawer() {
     });
   });
 
+  // Manage Accounts Modal (Admin Only)
+  const manageAccountsModal = document.getElementById("manageAccountsModal");
+  const btnOpenManageAccounts = document.getElementById("btnOpenManageAccounts");
+  const btnCloseAccountsModal = document.getElementById("btnCloseAccountsModal");
+  const btnOpenAddAccount = document.getElementById("btnOpenAddAccount");
+  const btnCancelAccountForm = document.getElementById("btnCancelAccountForm");
+  const btnSaveAccount = document.getElementById("btnSaveAccount");
+
+  if (btnOpenManageAccounts) {
+    btnOpenManageAccounts.addEventListener("click", () => {
+      if (!isAdmin()) {
+        showToast("Admin Restricted", "Account management is restricted to Toby (Admin).");
+        return;
+      }
+      renderUserAccountsTable();
+      document.getElementById("accountFormBox").style.display = "none";
+      manageAccountsModal.classList.add("open");
+      initLucide();
+    });
+  }
+
+  if (btnCloseAccountsModal) {
+    btnCloseAccountsModal.addEventListener("click", () => manageAccountsModal.classList.remove("open"));
+  }
+
+  if (btnOpenAddAccount) {
+    btnOpenAddAccount.addEventListener("click", () => {
+      document.getElementById("accountFormTitle").innerHTML = `<i data-lucide="user-plus"></i> Add New Account`;
+      document.getElementById("editAccountOriginalName").value = "";
+      document.getElementById("accName").value = "";
+      document.getElementById("accRole").value = "Team Member";
+      document.getElementById("accPin").value = "";
+      document.getElementById("accountFormBox").style.display = "block";
+      initLucide();
+    });
+  }
+
+  if (btnCancelAccountForm) {
+    btnCancelAccountForm.addEventListener("click", () => {
+      document.getElementById("accountFormBox").style.display = "none";
+    });
+  }
+
+  if (btnSaveAccount) {
+    btnSaveAccount.addEventListener("click", () => {
+      if (!isAdmin()) return;
+      const origName = document.getElementById("editAccountOriginalName").value;
+      const name = document.getElementById("accName").value.trim();
+      const role = document.getElementById("accRole").value;
+      const pin = document.getElementById("accPin").value.trim();
+
+      if (!name || !pin) {
+        alert("Please enter both Account Name and Security PIN.");
+        return;
+      }
+
+      let accounts = getUserAccounts();
+
+      if (origName) {
+        const idx = accounts.findIndex(a => a.name === origName);
+        if (idx !== -1) {
+          accounts[idx] = { name, role, pin };
+        }
+        recordAuditLog("Account Edit", "Security", `User account "${name}" (${role}) updated by Admin (${currentUser}).`);
+        showToast("Account Updated", `User "${name}" updated.`);
+      } else {
+        if (accounts.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+          alert(`An account with name "${name}" already exists.`);
+          return;
+        }
+        accounts.push({ name, role, pin });
+        recordAuditLog("Account Created", "Security", `New user account "${name}" (${role}) created by Admin (${currentUser}).`);
+        showToast("Account Created", `User "${name}" (${role}) added.`);
+      }
+
+      saveUserAccounts(accounts);
+      renderUserAccountsTable();
+      document.getElementById("accountFormBox").style.display = "none";
+    });
+  }
+
   // 4. CSV Exports
   document.getElementById("btnExportCSV").addEventListener("click", exportCSV);
   document.getElementById("btnExportTableCSV").addEventListener("click", exportCSV);
 }
+
+function renderUserAccountsTable() {
+  const tbody = document.getElementById("userAccountsTableBody");
+  if (!tbody) return;
+  const accounts = getUserAccounts();
+  tbody.innerHTML = "";
+
+  accounts.forEach(acc => {
+    const tr = document.createElement("tr");
+    const isMainAdmin = acc.name === "Toby";
+    const badgeClass = acc.role === 'Admin' ? 'badge-primary' : acc.role === 'Manager' ? 'badge-forecast' : 'badge-navy';
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(acc.name)}</strong> ${isMainAdmin ? '<span class="badge badge-amber" style="margin-left:4px; font-size:0.65rem;">Primary</span>' : ''}</td>
+      <td class="text-center"><span class="badge ${badgeClass}">${escapeHtml(acc.role)}</span></td>
+      <td class="text-center font-mono" style="letter-spacing:0.15em;">••••</td>
+      <td class="text-right">
+        <button class="btn btn-secondary btn-sm" onclick="editAccount('${escapeHtml(acc.name)}')"><i data-lucide="edit-3" style="width:13px;height:13px;"></i> Edit</button>
+        ${!isMainAdmin ? `<button class="btn btn-danger btn-sm" onclick="deleteAccount('${escapeHtml(acc.name)}')"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  initLucide();
+}
+
+window.editAccount = (name) => {
+  const accounts = getUserAccounts();
+  const acc = accounts.find(a => a.name === name);
+  if (!acc) return;
+  document.getElementById("accountFormTitle").innerHTML = `<i data-lucide="edit"></i> Edit Account: ${escapeHtml(name)}`;
+  document.getElementById("editAccountOriginalName").value = name;
+  document.getElementById("accName").value = acc.name;
+  document.getElementById("accRole").value = acc.role;
+  document.getElementById("accPin").value = acc.pin;
+  document.getElementById("accountFormBox").style.display = "block";
+  initLucide();
+};
+
+window.deleteAccount = (name) => {
+  if (!isAdmin()) return;
+  if (confirm(`Delete account "${name}"?`)) {
+    let accounts = getUserAccounts();
+    accounts = accounts.filter(a => a.name !== name);
+    saveUserAccounts(accounts);
+    recordAuditLog("Account Deleted", "Security", `User account "${name}" removed by Admin (${currentUser}).`);
+    renderUserAccountsTable();
+    showToast("Account Deleted", `User "${name}" removed.`);
+  }
+};
 
 let currentDrawerDeal = null;
 
@@ -1330,13 +1598,27 @@ function renderCommentLogs(notes) {
       const timeStr = match[1];
       const author = match[2];
       const text = match[3];
-      item.innerHTML = `
-        <div class="log-item-header">
-          <span class="log-author-tag"><i data-lucide="user"></i> ${escapeHtml(author)}</span>
-          <span class="log-timestamp">${escapeHtml(timeStr)}</span>
-        </div>
-        <div class="log-item-text">${escapeHtml(text)}</div>
-      `;
+
+      const isStatusUpdate = text.startsWith("🔄") || text.startsWith("🚀") || text.startsWith("⚡") || text.toLowerCase().includes("stage:") || text.toLowerCase().includes("status:");
+
+      if (isStatusUpdate) {
+        item.classList.add("log-item-status-change");
+        item.innerHTML = `
+          <div class="log-item-header">
+            <span class="log-author-tag log-author-system"><i data-lucide="refresh-cw"></i> ${escapeHtml(author)} (Status Update)</span>
+            <span class="log-timestamp">${escapeHtml(timeStr)}</span>
+          </div>
+          <div class="log-item-text" style="font-weight:700; color:var(--primary);">${escapeHtml(text)}</div>
+        `;
+      } else {
+        item.innerHTML = `
+          <div class="log-item-header">
+            <span class="log-author-tag"><i data-lucide="user"></i> ${escapeHtml(author)}</span>
+            <span class="log-timestamp">${escapeHtml(timeStr)}</span>
+          </div>
+          <div class="log-item-text">${escapeHtml(text)}</div>
+        `;
+      }
     } else {
       item.innerHTML = `
         <div class="log-item-header">
@@ -1370,6 +1652,7 @@ function openDrawer(deal) {
 
   document.getElementById("editEntryDate").value = deal.entry_date || "";
   document.getElementById("editBuyer").value = deal.buyer || "";
+  if (document.getElementById("editTeam")) document.getElementById("editTeam").value = deal.team || "Panama";
   document.getElementById("editSupplier").value = deal.supplier || "";
   document.getElementById("editProduct").value = deal.product || "";
   document.getElementById("editCategory").value = deal.product_range || "";

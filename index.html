@@ -13,7 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="styles.css?v=6.0">
+  <link rel="stylesheet" href="styles.css?v=17.0">
 </head>
 <body>
   <!-- PIN Lock Overlay (Multi-User Login) -->
@@ -97,6 +97,16 @@
 
       <!-- LINE 2: Single-Line Filters Bar -->
       <div class="filters-bar dashboard-filters">
+        <div class="filter-group">
+          <label><i data-lucide="globe"></i> Team:</label>
+          <select id="filterTeam" class="select-control">
+            <option value="All">All Teams</option>
+            <option value="Panama" selected>Panama Team</option>
+            <option value="Turkey">Turkey Team</option>
+            <option value="Spain">Spain Team</option>
+          </select>
+        </div>
+
         <div class="filter-group">
           <label><i data-lucide="calendar"></i> Period:</label>
           <select id="filterPeriodType" class="select-control">
@@ -218,7 +228,7 @@
         <div class="dash-panel buyer-panel">
           <div class="panel-header">
             <h3><i data-lucide="users"></i> Buyer Funnel & Stage Performance</h3>
-            <span class="badge badge-navy">Panama Team</span>
+            <span class="badge badge-navy" id="buyerFunnelTeamBadge">Panama Team</span>
           </div>
           <div class="table-responsive">
             <table class="data-table" id="buyerFunnelTable">
@@ -235,7 +245,6 @@
                   <th class="text-center">Ordered ($)</th>
                   <th class="text-center">Active ($)</th>
                   <th class="text-center">Rate</th>
-                  <th class="text-center">Signal</th>
                 </tr>
               </thead>
               <tbody id="buyerFunnelBody"></tbody>
@@ -244,17 +253,15 @@
           </div>
         </div>
 
-        <!-- Stage Breakdown Chart & Distribution Panel -->
+        <!-- Stage Breakdown Distribution Panel -->
         <div class="dash-panel chart-panel">
           <div class="panel-header">
-            <h3><i data-lucide="pie-chart"></i> Pipeline Stage Distribution</h3>
-          </div>
-          <div class="chart-container" style="height: 220px;">
-            <canvas id="stageChart"></canvas>
+            <h3><i data-lucide="layers"></i> Pipeline Stage Distribution</h3>
+            <span class="badge badge-navy">Live Metrics</span>
           </div>
 
-          <!-- Stage Metrics Breakdown Table Below Chart -->
-          <div class="table-responsive" style="margin-top: 1rem;">
+          <!-- Stage Metrics Breakdown Table -->
+          <div class="table-responsive">
             <table class="data-table compact" id="stageBreakdownTable">
               <thead>
                 <tr>
@@ -266,6 +273,34 @@
               </thead>
               <tbody id="stageBreakdownBody"></tbody>
             </table>
+          </div>
+
+          <!-- Visual Stage Distribution Share Bar & Pipeline Health Summary -->
+          <div class="stage-share-widget" style="margin-top: 0.75rem; padding-top: 0.65rem; border-top: 1px solid var(--border-subtle);">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.35rem; font-size:0.7rem; font-weight:800; color:var(--text-muted); letter-spacing:0.04em;">
+              <span>STAGE SHARE DISTRIBUTION</span>
+              <span id="activeSharePct" style="color:var(--primary); font-family: 'JetBrains Mono', monospace; font-weight:700;">0.0% Active</span>
+            </div>
+
+            <!-- Multi-Color Segmented Progress Bar -->
+            <div class="stage-progress-bar" style="display:flex; height:8px; border-radius:9999px; overflow:hidden; background:var(--bg-input); gap:2px; margin-bottom:0.6rem;">
+              <div id="barSegDetection" style="width:0%; background:#38BDF8; transition:width 0.3s ease;" title="Detection"></div>
+              <div id="barSegSent" style="width:0%; background:#A855F7; transition:width 0.3s ease;" title="Affaire Sent"></div>
+              <div id="barSegOffer" style="width:0%; background:#EC4899; transition:width 0.3s ease;" title="Offer Received"></div>
+              <div id="barSegForecast" style="width:0%; background:#818CF8; transition:width 0.3s ease;" title="Forecast"></div>
+              <div id="barSegOrdered" style="width:0%; background:#10B981; transition:width 0.3s ease;" title="Ordered"></div>
+              <div id="barSegClosed" style="width:0%; background:#F43F5E; transition:width 0.3s ease;" title="Closed/Lost"></div>
+            </div>
+
+            <!-- Pipeline Health Metrics Pills -->
+            <div class="stage-health-pills" style="display:flex; align-items:center; justify-content:space-between; font-size:0.72rem;">
+              <span class="health-pill" style="display:inline-flex; align-items:center; gap:0.25rem; background:var(--accent-blue-bg); color:var(--accent-blue); padding:0.2rem 0.5rem; border-radius:6px; font-weight:700;">
+                <i data-lucide="zap" style="width:12px; height:12px;"></i> Active: <span id="activeDealsCount">0 Deals</span>
+              </span>
+              <span class="health-pill" style="display:inline-flex; align-items:center; gap:0.25rem; background:var(--accent-green-bg); color:var(--accent-green); padding:0.2rem 0.5rem; border-radius:6px; font-weight:700;">
+                <i data-lucide="check-circle-2" style="width:12px; height:12px;"></i> Ordered: <span id="orderedDealsCount">$0</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -337,6 +372,15 @@
               <option value="Jorge Chandeck">Jorge Chandeck</option>
               <option value="Julio Arispe">Julio Arispe</option>
               <option value="Marian Rovira">Marian Rovira</option>
+            </select>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="addTeam">Purchasing Team *</label>
+            <select id="addTeam" class="form-control" required>
+              <option value="Panama" selected>Panama Team</option>
+              <option value="Turkey">Turkey Team</option>
+              <option value="Spain">Spain Team</option>
             </select>
           </div>
 
@@ -436,7 +480,15 @@
                       <option value="Marian Rovira">Marian Rovira</option>
                     </select>
                   </div>
-                  <div class="form-group full-width">
+                  <div class="form-group">
+                    <label>Purchasing Team *</label>
+                    <select id="editTeam" class="form-control" required>
+                      <option value="Panama">Panama Team</option>
+                      <option value="Turkey">Turkey Team</option>
+                      <option value="Spain">Spain Team</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
                     <label>Product Range (Category) *</label>
                     <select id="editCategory" class="form-control" required></select>
                   </div>
@@ -675,13 +727,99 @@
 
         <div class="divider"></div>
 
-        <div class="database-actions">
-          <button class="btn btn-secondary" id="btnResetToLocal">
-            <i data-lucide="rotate-ccw"></i> Reset Local Data
+        <div class="database-actions" style="display:flex; flex-direction:column; gap:0.75rem;">
+          <div style="display:flex; gap:0.5rem; justify-content:space-between; width:100%;">
+            <button class="btn btn-secondary" id="btnResetToLocal">
+              <i data-lucide="rotate-ccw"></i> Reset Data Baseline
+            </button>
+            <button class="btn btn-primary" id="btnSaveSettings">
+              <i data-lucide="check"></i> Save & Connect Cloud
+            </button>
+          </div>
+
+          <button class="btn btn-secondary btn-block" id="btnOpenManageAccounts" style="margin-top:0.25rem;">
+            <i data-lucide="users"></i> Manage Team User Accounts & PINs (Admin Only)
           </button>
-          <button class="btn btn-primary" id="btnSaveSettings">
-            <i data-lucide="check"></i> Save & Connect Cloud
+
+          <!-- Danger Zone: Admin Reset Database -->
+          <div class="admin-danger-box" style="margin-top: 0.5rem; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 10px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <strong style="color: #F43F5E; font-size: 0.82rem; display: flex; align-items: center; gap: 0.35rem;">
+                <i data-lucide="triangle-alert"></i> Admin Factory Reset Zone
+              </strong>
+              <span class="badge" style="background: rgba(244, 63, 94, 0.2); color: #F43F5E; font-size: 0.68rem; font-weight:700;">Toby Only</span>
+            </div>
+            <p style="font-size: 0.76rem; color: var(--text-muted); margin: 0;">
+              Permanently wipe all deal edits & restore pipeline data back to default factory baseline.
+            </p>
+            <button class="btn btn-secondary" id="btnResetDatabase" style="background: #F43F5E; color: white; border: none; font-weight: 700; font-size: 0.8rem; height: 36px; cursor: pointer;">
+              <i data-lucide="rotate-ccw"></i> Reset Pipeline Database (Factory Restore)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MANAGE USER ACCOUNTS MODAL (ADMIN ONLY) ================= -->
+  <div id="manageAccountsModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 640px;">
+      <div class="modal-header">
+        <h3><i data-lucide="users"></i> Manage User Accounts & Access Control</h3>
+        <button class="btn-close" id="btnCloseAccountsModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+          <span class="text-muted" style="font-size:0.8rem;">Configure team accounts, assigned roles, and PIN access codes</span>
+          <button id="btnOpenAddAccount" class="btn btn-primary btn-sm">
+            <i data-lucide="user-plus"></i> Add Account
           </button>
+        </div>
+
+        <!-- Add/Edit Account Sub-Form -->
+        <div id="accountFormBox" style="display:none; background:var(--bg-input); border:1px solid var(--border-subtle); border-radius:10px; padding:1rem; margin-bottom:1rem;">
+          <h4 id="accountFormTitle" style="font-size:0.9rem; margin-bottom:0.75rem; color:var(--primary); font-weight:800; display:flex; align-items:center; gap:0.4rem;">
+            <i data-lucide="user-plus"></i> Add New Account
+          </h4>
+          <input type="hidden" id="editAccountOriginalName">
+          <div class="form-grid" style="padding:0; gap:0.75rem;">
+            <div class="form-group">
+              <label>Account Name *</label>
+              <input type="text" id="accName" class="form-control" placeholder="e.g. Sarah Jenkins">
+            </div>
+            <div class="form-group">
+              <label>Access Role *</label>
+              <select id="accRole" class="select-control" style="width:100%; height:38px;">
+                <option value="Team Member">Team Member</option>
+                <option value="Manager">Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+            </div>
+            <div class="form-group full-width">
+              <label>Security PIN Code (4 Digits) *</label>
+              <input type="password" maxlength="6" id="accPin" class="form-control font-mono" placeholder="4-digit PIN" style="letter-spacing:0.2em;">
+            </div>
+          </div>
+          <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.85rem;">
+            <button type="button" id="btnCancelAccountForm" class="btn btn-secondary btn-sm">Cancel</button>
+            <button type="button" id="btnSaveAccount" class="btn btn-primary btn-sm">Save Account</button>
+          </div>
+        </div>
+
+        <!-- Accounts Data Table -->
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>User Name</th>
+                <th class="text-center">Role</th>
+                <th class="text-center">PIN Code</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="userAccountsTableBody"></tbody>
+          </table>
         </div>
       </div>
     </div>
