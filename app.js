@@ -504,19 +504,12 @@ function initDropdowns() {
 }
 
 function initFilters() {
-  const tSelect = document.getElementById("filterTeam");
   const pType = document.getElementById("filterPeriodType");
   const pVal = document.getElementById("filterPeriodValue");
   const bSelect = document.getElementById("filterBuyer");
   const cSelect = document.getElementById("filterCategory");
   const sInput = document.getElementById("searchInput");
   const staleToggle = document.getElementById("filterStaleOnly");
-
-  if (tSelect) {
-    tSelect.addEventListener("change", () => {
-      applyFiltersAndRender();
-    });
-  }
 
   pType.addEventListener("change", () => {
     filterPeriod = pType.value;
@@ -648,13 +641,6 @@ function applyFiltersAndRender() {
   if (ongoingBadge) ongoingBadge.textContent = ongoingCount;
 
   filteredDeals = allDeals.filter(d => {
-    // Team filter
-    const tSelect = document.getElementById("filterTeam");
-    if (tSelect && tSelect.value !== "All") {
-      const dealTeam = d.team || "Panama";
-      if (dealTeam !== tSelect.value) return false;
-    }
-
     // Period filter
     if (filterPeriod === "Monthly" && filterPeriodVal) {
       if (!d.entry_date || !d.entry_date.startsWith(filterPeriodVal)) return false;
@@ -719,13 +705,6 @@ function applyFiltersAndRender() {
 
 // ── 9. RENDER: DASHBOARD VIEW ─────────────────────────────────────────────
 function renderDashboard() {
-  const tSelect = document.getElementById("filterTeam");
-  const teamVal = tSelect ? tSelect.value : "All";
-  const teamBadge = document.getElementById("buyerFunnelTeamBadge");
-  if (teamBadge) {
-    teamBadge.textContent = teamVal === "All" ? "All Teams" : `${teamVal} Team`;
-  }
-
   let totalDetections = filteredDeals.length;
   let activeValue = 0;
   let forecastValue = 0;
@@ -1065,7 +1044,6 @@ function initModalsAndDrawer() {
     // Matching Excel rules: creates clean draft detection
     const newDeal = {
       id: null,
-      team: document.getElementById("addTeam") ? document.getElementById("addTeam").value : "Panama",
       entry_date: document.getElementById("addEntryDate").value,
       buyer: document.getElementById("addBuyer").value,
       supplier: document.getElementById("addSupplier").value.trim(),
@@ -1194,7 +1172,6 @@ function initModalsAndDrawer() {
 
     deal.entry_date = document.getElementById("editEntryDate").value;
     deal.buyer = document.getElementById("editBuyer").value;
-    deal.team = document.getElementById("editTeam") ? document.getElementById("editTeam").value : "Panama";
     deal.supplier = document.getElementById("editSupplier").value.trim();
     deal.product = document.getElementById("editProduct").value.trim();
     deal.product_range = document.getElementById("editCategory").value;
@@ -1339,31 +1316,56 @@ function initModalsAndDrawer() {
     }
   });
 
-  // Admin Database Factory Reset with 2-step confirmation
-  const btnResetDatabase = document.getElementById("btnResetDatabase");
-  if (btnResetDatabase) {
-    btnResetDatabase.addEventListener("click", async () => {
+  // Reset Database Confirmation Modal (Admin Only)
+  const resetDBModal = document.getElementById("resetDatabaseModal");
+  const btnOpenResetDBModal = document.getElementById("btnOpenResetDBModal");
+  const btnCloseResetDBModal = document.getElementById("btnCloseResetDBModal");
+  const btnCancelResetDB = document.getElementById("btnCancelResetDB");
+  const btnExecuteResetDB = document.getElementById("btnExecuteResetDB");
+  const inputConfirmResetCode = document.getElementById("inputConfirmResetCode");
+
+  if (btnOpenResetDBModal) {
+    btnOpenResetDBModal.addEventListener("click", () => {
       if (!isAdmin()) {
-        showToast("Unauthorized", "Database factory reset is strictly restricted to Admin Toby.");
+        showToast("Unauthorized", "Only Toby (Admin) can reset the database.");
         return;
       }
+      inputConfirmResetCode.value = "";
+      btnExecuteResetDB.disabled = true;
+      btnExecuteResetDB.style.opacity = "0.5";
+      btnExecuteResetDB.style.cursor = "not-allowed";
+      resetDBModal.classList.add("open");
+      setTimeout(() => inputConfirmResetCode.focus(), 150);
+      initLucide();
+    });
+  }
 
-      const confirmStep1 = confirm(
-        "🚨 DANGER ZONE: FACTORY RESET DATABASE\n\n" +
-        "This will permanently delete all deal updates, custom notes, and newly added pipeline records, " +
-        "and restore the database back to its default factory baseline.\n\n" +
-        "Are you sure you want to proceed?"
-      );
+  if (btnCloseResetDBModal) btnCloseResetDBModal.addEventListener("click", () => resetDBModal.classList.remove("open"));
+  if (btnCancelResetDB) btnCancelResetDB.addEventListener("click", () => resetDBModal.classList.remove("open"));
 
-      if (!confirmStep1) return;
-
-      const userInput = prompt('⚠️ FINAL CONFIRMATION: Type "RESET" in all capital letters to wipe and restore database:');
-      if (userInput !== "RESET") {
-        showToast("Reset Canceled", "Database reset was canceled due to incorrect confirmation text.");
-        return;
+  if (inputConfirmResetCode) {
+    inputConfirmResetCode.addEventListener("input", () => {
+      const code = inputConfirmResetCode.value.trim().toUpperCase();
+      if (code === "RESET") {
+        btnExecuteResetDB.disabled = false;
+        btnExecuteResetDB.style.opacity = "1";
+        btnExecuteResetDB.style.cursor = "pointer";
+      } else {
+        btnExecuteResetDB.disabled = true;
+        btnExecuteResetDB.style.opacity = "0.5";
+        btnExecuteResetDB.style.cursor = "not-allowed";
       }
+    });
+  }
+
+  if (btnExecuteResetDB) {
+    btnExecuteResetDB.addEventListener("click", async () => {
+      if (!isAdmin()) return;
+      const code = inputConfirmResetCode.value.trim().toUpperCase();
+      if (code !== "RESET") return;
 
       localStorage.removeItem("panama_pipeline_deals");
+
       try {
         const res = await fetch("initial_data.json");
         if (res.ok) {
@@ -1372,29 +1374,32 @@ function initModalsAndDrawer() {
           allDeals = [];
         }
       } catch (err) {
+        console.warn("Error fetching initial_data.json:", err);
         allDeals = [];
       }
+
       localStorage.setItem("panama_pipeline_deals", JSON.stringify(allDeals));
 
       if (supabaseClient) {
         try {
           await supabaseClient.from("detections").delete().neq("id", 0);
-          for (const d of allDeals) {
-            const { id, ...cleanDeal } = d;
-            await supabaseClient.from("detections").insert(cleanDeal);
+          if (allDeals.length > 0) {
+            const cleanPayload = allDeals.map(d => {
+              const { id, ...rest } = d;
+              return rest;
+            });
+            await supabaseClient.from("detections").insert(cleanPayload);
           }
         } catch (err) {
-          console.error("Supabase reset error:", err);
+          console.warn("Supabase re-seed warning:", err);
         }
       }
 
-      recordAuditLog("Database Reset", "System", `Full pipeline database factory reset executed by Admin (${currentUser}).`);
-
-      const settingsModal = document.getElementById("settingsModal");
-      if (settingsModal) settingsModal.classList.remove("open");
-
+      recordAuditLog("Reset Database", "System", `Pipeline database reset to factory seed data by Admin (${currentUser}).`);
+      resetDBModal.classList.remove("open");
+      settingsModal.classList.remove("open");
       applyFiltersAndRender();
-      showToast("Database Reset Complete", "Pipeline data restored to factory baseline.");
+      showToast("Database Reset", "Pipeline dataset reset to factory baseline successfully.");
     });
   }
 
@@ -1652,7 +1657,6 @@ function openDrawer(deal) {
 
   document.getElementById("editEntryDate").value = deal.entry_date || "";
   document.getElementById("editBuyer").value = deal.buyer || "";
-  if (document.getElementById("editTeam")) document.getElementById("editTeam").value = deal.team || "Panama";
   document.getElementById("editSupplier").value = deal.supplier || "";
   document.getElementById("editProduct").value = deal.product || "";
   document.getElementById("editCategory").value = deal.product_range || "";

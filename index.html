@@ -98,16 +98,6 @@
       <!-- LINE 2: Single-Line Filters Bar -->
       <div class="filters-bar dashboard-filters">
         <div class="filter-group">
-          <label><i data-lucide="globe"></i> Team:</label>
-          <select id="filterTeam" class="select-control">
-            <option value="All">All Teams</option>
-            <option value="Panama" selected>Panama Team</option>
-            <option value="Turkey">Turkey Team</option>
-            <option value="Spain">Spain Team</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
           <label><i data-lucide="calendar"></i> Period:</label>
           <select id="filterPeriodType" class="select-control">
             <option value="All Time" selected>All Time</option>
@@ -228,7 +218,7 @@
         <div class="dash-panel buyer-panel">
           <div class="panel-header">
             <h3><i data-lucide="users"></i> Buyer Funnel & Stage Performance</h3>
-            <span class="badge badge-navy" id="buyerFunnelTeamBadge">Panama Team</span>
+            <span class="badge badge-navy">Panama Team</span>
           </div>
           <div class="table-responsive">
             <table class="data-table" id="buyerFunnelTable">
@@ -376,15 +366,6 @@
           </div>
 
           <div class="form-group full-width">
-            <label for="addTeam">Purchasing Team *</label>
-            <select id="addTeam" class="form-control" required>
-              <option value="Panama" selected>Panama Team</option>
-              <option value="Turkey">Turkey Team</option>
-              <option value="Spain">Spain Team</option>
-            </select>
-          </div>
-
-          <div class="form-group full-width">
             <label for="addSupplier">Supplier Name *</label>
             <input type="text" id="addSupplier" class="form-control" placeholder="e.g. Acme Textile S.A." required>
           </div>
@@ -480,15 +461,7 @@
                       <option value="Marian Rovira">Marian Rovira</option>
                     </select>
                   </div>
-                  <div class="form-group">
-                    <label>Purchasing Team *</label>
-                    <select id="editTeam" class="form-control" required>
-                      <option value="Panama">Panama Team</option>
-                      <option value="Turkey">Turkey Team</option>
-                      <option value="Spain">Spain Team</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
+                  <div class="form-group full-width">
                     <label>Product Range (Category) *</label>
                     <select id="editCategory" class="form-control" required></select>
                   </div>
@@ -730,7 +703,7 @@
         <div class="database-actions" style="display:flex; flex-direction:column; gap:0.75rem;">
           <div style="display:flex; gap:0.5rem; justify-content:space-between; width:100%;">
             <button class="btn btn-secondary" id="btnResetToLocal">
-              <i data-lucide="rotate-ccw"></i> Reset Data Baseline
+              <i data-lucide="rotate-ccw"></i> Reload Baseline
             </button>
             <button class="btn btn-primary" id="btnSaveSettings">
               <i data-lucide="check"></i> Save & Connect Cloud
@@ -741,21 +714,54 @@
             <i data-lucide="users"></i> Manage Team User Accounts & PINs (Admin Only)
           </button>
 
-          <!-- Danger Zone: Admin Reset Database -->
-          <div class="admin-danger-box" style="margin-top: 0.5rem; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 10px; padding: 0.85rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <strong style="color: #F43F5E; font-size: 0.82rem; display: flex; align-items: center; gap: 0.35rem;">
-                <i data-lucide="triangle-alert"></i> Admin Factory Reset Zone
-              </strong>
-              <span class="badge" style="background: rgba(244, 63, 94, 0.2); color: #F43F5E; font-size: 0.68rem; font-weight:700;">Toby Only</span>
+          <!-- Danger Zone: Reset Database (Admin Only) -->
+          <div class="danger-zone-box" style="margin-top: 0.5rem; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.25); border-radius: 10px; padding: 0.85rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+              <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 800; color: #F43F5E;">
+                <i data-lucide="alert-triangle"></i> Factory Reset Database (Admin Only)
+              </div>
+              <span class="badge" style="background: rgba(244, 63, 94, 0.2); color: #F43F5E; border: 1px solid rgba(244, 63, 94, 0.3); font-size: 0.65rem;">Danger Zone</span>
             </div>
-            <p style="font-size: 0.76rem; color: var(--text-muted); margin: 0;">
-              Permanently wipe all deal edits & restore pipeline data back to default factory baseline.
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.65rem; line-height: 1.4;">
+              Permanently wipes custom pipeline records and resets database to factory seed data. Requires 2-step Admin confirmation.
             </p>
-            <button class="btn btn-secondary" id="btnResetDatabase" style="background: #F43F5E; color: white; border: none; font-weight: 700; font-size: 0.8rem; height: 36px; cursor: pointer;">
-              <i data-lucide="rotate-ccw"></i> Reset Pipeline Database (Factory Restore)
+            <button class="btn btn-block" id="btnOpenResetDBModal" style="background: transparent; color: #F43F5E; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700; transition: all 0.2s ease;">
+              <i data-lucide="trash-2"></i> Reset Pipeline Database...
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= RESET DATABASE CONFIRMATION MODAL (ADMIN ONLY) ================= -->
+  <div id="resetDatabaseModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 480px; border-top: 4px solid #F43F5E;">
+      <div class="modal-header">
+        <h3 style="color: #F43F5E;"><i data-lucide="alert-triangle"></i> Confirm Database Reset</h3>
+        <button class="btn-close" id="btnCloseResetDBModal">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 1.25rem;">
+        <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem;">
+          <div style="font-size: 0.85rem; font-weight: 800; color: #F43F5E; margin-bottom: 0.3rem;">⚠️ CRITICAL ADMIN WARNING</div>
+          <div style="font-size: 0.78rem; color: var(--text-main); line-height: 1.4;">
+            You are about to <strong>PERMANENTLY RESET</strong> the pipeline database. All added deals, follow-up comments, and status updates will be erased and restored to factory seed data.
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.4rem; display: block;">
+            To confirm, type <strong style="color: #F43F5E; letter-spacing: 0.05em;">RESET</strong> below:
+          </label>
+          <input type="text" id="inputConfirmResetCode" class="form-control font-mono" placeholder="Type RESET to confirm" style="border-color: rgba(244, 63, 94, 0.4); text-transform: uppercase;">
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+          <button class="btn btn-secondary" id="btnCancelResetDB">Cancel</button>
+          <button class="btn" id="btnExecuteResetDB" disabled style="background: #F43F5E; color: white; border: none; font-weight: 700; opacity: 0.5; cursor: not-allowed;">
+            <i data-lucide="trash-2"></i> Confirm & Reset Database
+          </button>
         </div>
       </div>
     </div>
