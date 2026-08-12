@@ -71,6 +71,7 @@ let filterCategoryVal = "All";
 let filterSearchVal = "";
 let filterStaleOnlyVal = false;
 let filterOngoingOnlyVal = false;
+let filterStatusVal = "All";
 
 // ── 3. INITIALIZATION ─────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
@@ -78,10 +79,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   initLucide();
   initPINLock();
   initDropdowns();
-  initTabs();
   initModalsAndDrawer();
   initFilters();
-  initDragAndDrop();
 
   initSupabase();
   await loadDeals();
@@ -127,19 +126,109 @@ const PIN_TO_USER = {
 
 let currentUser = sessionStorage.getItem("pipeline_user") || "Toby";
 
+function isAdmin() {
+  return currentUser === "Toby";
+}
+
+let globalAuditLogs = JSON.parse(localStorage.getItem("panama_audit_logs") || "[]");
+
+function recordAuditLog(action, supplier, details, dealId = null) {
+  const now = new Date();
+  const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const entry = {
+    id: Date.now(),
+    dealId: dealId,
+    timestamp: timeStr,
+    user: currentUser || "Unknown",
+    action: action,
+    supplier: supplier || "Pipeline",
+    details: details || ""
+  };
+  globalAuditLogs.unshift(entry);
+  if (globalAuditLogs.length > 500) globalAuditLogs.pop();
+  localStorage.setItem("panama_audit_logs", JSON.stringify(globalAuditLogs));
+}
+
+function renderGlobalAuditLogs() {
+  const container = document.getElementById("globalAuditLogList");
+  if (!container) return;
+
+  if (!globalAuditLogs || globalAuditLogs.length === 0) {
+    container.innerHTML = `<div class="comments-log-empty">No change logs recorded yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = globalAuditLogs.map(log => `
+    <div class="log-item ${log.dealId ? 'log-item-clickable' : ''}" ${log.dealId ? `onclick="openDealFromLog(${log.dealId})"` : ''} title="${log.dealId ? 'Click to open Detection Details' : ''}">
+      <div class="log-item-header">
+        <span class="log-author-tag">
+          <i data-lucide="${log.user === 'Toby' ? 'crown' : 'user'}"></i>
+          <strong>${escapeHtml(log.user)}</strong>
+          <span style="font-weight:400; color:var(--text-dim);">· ${escapeHtml(log.action)}</span>
+        </span>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          ${log.dealId ? `<span class="badge" style="background:var(--primary-light); color:var(--primary); font-size:0.7rem; font-weight:700; display:inline-flex; align-items:center; gap:3px;"><i data-lucide="external-link" style="width:11px; height:11px;"></i>View Deal</span>` : ''}
+          <span class="log-timestamp">${escapeHtml(log.timestamp)}</span>
+        </div>
+      </div>
+      <div class="log-item-text" style="font-size:0.88rem; font-weight:700; color:var(--text-main); margin-bottom:2px;">
+        ${escapeHtml(log.supplier)}
+      </div>
+      <div class="log-item-text" style="color:var(--text-muted); font-size:0.8rem;">
+        ${escapeHtml(log.details)}
+      </div>
+    </div>
+  `).join("");
+  initLucide();
+}
+
+window.openDealFromLog = (dealId) => {
+  const auditModal = document.getElementById("auditModal");
+  if (auditModal) auditModal.classList.remove("open");
+  const deal = allDeals.find(d => d.id === dealId);
+  if (deal) openDrawer(deal);
+};
+
+function updateAdminUI() {
+  const userBadge = document.getElementById("activeUserName");
+  if (userBadge) {
+    userBadge.textContent = isAdmin() ? `👑 ${currentUser} (Admin)` : `👤 ${currentUser}`;
+  }
+
+  const deleteBtn = document.getElementById("btnDeleteDrawerDeal");
+  if (deleteBtn) {
+    deleteBtn.style.display = isAdmin() ? "inline-flex" : "none";
+  }
+
+  const clearLogsBtn = document.getElementById("btnClearAuditLogs");
+  if (clearLogsBtn) {
+    clearLogsBtn.style.display = isAdmin() ? "inline-block" : "none";
+  }
+
+  const settingsBtn = document.getElementById("btnOpenSettings");
+  if (settingsBtn) {
+    if (isAdmin()) {
+      settingsBtn.style.opacity = "1";
+      settingsBtn.title = "Cloud Database & Settings (Admin)";
+    } else {
+      settingsBtn.style.opacity = "0.6";
+      settingsBtn.title = "Cloud Database & Settings (Admin Only - Toby)";
+    }
+  }
+}
+
 function initPINLock() {
   const pinOverlay = document.getElementById("pinOverlay");
   const pinForm = document.getElementById("pinForm");
   const pinInput = document.getElementById("pinInput");
   const pinError = document.getElementById("pinError");
   const btnLockApp = document.getElementById("btnLockApp");
-  const activeUserPill = document.getElementById("activeUserName");
 
   const isUnlocked = sessionStorage.getItem("pipeline_unlocked") === "true";
   if (isUnlocked && currentUser) {
     pinOverlay.classList.add("unlocked");
     pinOverlay.style.display = "none";
-    if (activeUserPill) activeUserPill.textContent = currentUser;
+    updateAdminUI();
   }
 
   function attemptUnlock() {
@@ -152,7 +241,7 @@ function initPINLock() {
       currentUser = matchedUser;
       sessionStorage.setItem("pipeline_unlocked", "true");
       sessionStorage.setItem("pipeline_user", currentUser);
-      if (activeUserPill) activeUserPill.textContent = currentUser;
+      updateAdminUI();
 
       pinOverlay.classList.add("unlocked");
       pinOverlay.style.display = "none";
@@ -418,8 +507,19 @@ function initFilters() {
 
   sInput.addEventListener("input", (e) => {
     filterSearchVal = e.target.value.toLowerCase().trim();
+    const hSearch = document.getElementById("headerSearchInput");
+    if (hSearch) hSearch.value = e.target.value;
     applyFiltersAndRender();
   });
+
+  const headerSearchInput = document.getElementById("headerSearchInput");
+  if (headerSearchInput) {
+    headerSearchInput.addEventListener("input", (e) => {
+      filterSearchVal = e.target.value.toLowerCase().trim();
+      if (sInput) sInput.value = e.target.value;
+      applyFiltersAndRender();
+    });
+  }
 
   staleToggle.addEventListener("change", (e) => {
     filterStaleOnlyVal = e.target.checked;
@@ -430,6 +530,14 @@ function initFilters() {
   if (ongoingToggle) {
     ongoingToggle.addEventListener("change", (e) => {
       filterOngoingOnlyVal = e.target.checked;
+      applyFiltersAndRender();
+    });
+  }
+
+  const statusSelect = document.getElementById("filterStatus");
+  if (statusSelect) {
+    statusSelect.addEventListener("change", (e) => {
+      filterStatusVal = e.target.value;
       applyFiltersAndRender();
     });
   }
@@ -543,11 +651,27 @@ function applyFiltersAndRender() {
       if (!getStaleAlert(d)) return false;
     }
 
+    // Status filter
+    if (filterStatusVal !== "All") {
+      if (filterStatusVal === "Detection") {
+        if (d.affaire_created || d.status) return false;
+      } else if (filterStatusVal === "Affaire Sent") {
+        if (!d.affaire_sent || d.offer_received) return false;
+      } else if (filterStatusVal === "Offer Received") {
+        if (!d.offer_received || d.status === "Negotiated" || d.status === "Ordered" || d.status === "Lost" || d.status === "Cancelled") return false;
+      } else if (filterStatusVal === "propo_canceled") {
+        if (!d.propo_canceled) return false;
+      } else if (filterStatusVal === "rejected_affair") {
+        if (!d.rejected_affair) return false;
+      } else {
+        if (d.status !== filterStatusVal) return false;
+      }
+    }
+
     return true;
   });
 
   renderDashboard();
-  renderKanban();
   renderTable();
   initLucide();
 }
@@ -582,14 +706,14 @@ function renderDashboard() {
     }
   });
 
-  document.getElementById("kpiTotalDetections").textContent = totalDetections;
-  document.getElementById("kpiActiveValue").textContent = formatCurrency(activeValue);
-  document.getElementById("kpiForecastValue").textContent = formatCurrency(forecastValue);
-  document.getElementById("kpiForecastDeals").textContent = `${forecastDeals} Forecast Deals`;
-  document.getElementById("kpiOrderedValue").textContent = formatCurrency(orderedValue);
-  document.getElementById("kpiOrderedDeals").textContent = `${orderedDeals} Closed Orders`;
-  document.getElementById("kpiStaleDeals").textContent = staleDealsCount;
-  document.getElementById("staleCountBadge").textContent = staleDealsCount;
+  const elTot = document.getElementById("kpiTotalDetections"); if (elTot) elTot.textContent = totalDetections;
+  const elAct = document.getElementById("kpiActiveValue"); if (elAct) elAct.textContent = formatCurrency(activeValue);
+  const elFVal = document.getElementById("kpiForecastValue"); if (elFVal) elFVal.textContent = formatCurrency(forecastValue);
+  const elFDeals = document.getElementById("kpiForecastDeals"); if (elFDeals) elFDeals.textContent = `${forecastDeals} Forecast Deals`;
+  const elOVal = document.getElementById("kpiOrderedValue"); if (elOVal) elOVal.textContent = formatCurrency(orderedValue);
+  const elODeals = document.getElementById("kpiOrderedDeals"); if (elODeals) elODeals.textContent = `${orderedDeals} Closed Orders`;
+  const elStale = document.getElementById("kpiStaleDeals"); if (elStale) elStale.textContent = staleDealsCount;
+  const elBadge = document.getElementById("staleCountBadge"); if (elBadge) elBadge.textContent = staleDealsCount;
 
   // Buyer Funnel Table
   const tbody = document.getElementById("buyerFunnelBody");
@@ -671,49 +795,53 @@ function renderDashboard() {
 
   // Status Breakdown
   const statusTbody = document.getElementById("statusBreakdownBody");
-  statusTbody.innerHTML = "";
-  STATUSES.forEach(st => {
-    const sDeals = filteredDeals.filter(d => d.status === st);
-    const count = sDeals.length;
-    const pct = totalDetections > 0 ? ((count / totalDetections) * 100).toFixed(1) + "%" : "0.0%";
-    const val = sDeals.reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
-    
-    const activeDays = sDeals.map(getDaysOpen).filter(d => typeof d === "number");
-    const avgDays = activeDays.length > 0 ? Math.round(activeDays.reduce((a,b)=>a+b, 0) / activeDays.length) : "-";
+  if (statusTbody) {
+    statusTbody.innerHTML = "";
+    STATUSES.forEach(st => {
+      const sDeals = filteredDeals.filter(d => d.status === st);
+      const count = sDeals.length;
+      const pct = totalDetections > 0 ? ((count / totalDetections) * 100).toFixed(1) + "%" : "0.0%";
+      const val = sDeals.reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
+      
+      const activeDays = sDeals.map(getDaysOpen).filter(d => typeof d === "number");
+      const avgDays = activeDays.length > 0 ? Math.round(activeDays.reduce((a,b)=>a+b, 0) / activeDays.length) : "-";
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><strong>${st}</strong></td>
-      <td class="text-center font-bold">${count}</td>
-      <td class="text-center">${pct}</td>
-      <td class="text-right text-green font-bold">${formatCurrency(val)}</td>
-      <td class="text-center">${avgDays}</td>
-    `;
-    statusTbody.appendChild(tr);
-  });
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${st}</strong></td>
+        <td class="text-center font-bold">${count}</td>
+        <td class="text-center">${pct}</td>
+        <td class="text-right text-green font-bold">${formatCurrency(val)}</td>
+        <td class="text-center">${avgDays}</td>
+      `;
+      statusTbody.appendChild(tr);
+    });
+  }
 
   // Category Performance
   const catTbody = document.getElementById("categoryPerformanceBody");
-  catTbody.innerHTML = "";
-  PRODUCT_RANGES.forEach(cat => {
-    const cDeals = filteredDeals.filter(d => d.product_range === cat);
-    if (cDeals.length === 0) return;
+  if (catTbody) {
+    catTbody.innerHTML = "";
+    PRODUCT_RANGES.forEach(cat => {
+      const cDeals = filteredDeals.filter(d => d.product_range === cat);
+      if (cDeals.length === 0) return;
 
-    const det = cDeals.length;
-    const off = cDeals.filter(d => d.offer_received).length;
-    const ord = cDeals.filter(d => d.status === "Ordered").length;
-    const val = cDeals.reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
+      const det = cDeals.length;
+      const off = cDeals.filter(d => d.offer_received).length;
+      const ord = cDeals.filter(d => d.status === "Ordered").length;
+      const val = cDeals.reduce((sum, d) => sum + (parseFloat(d.offer_value) || 0), 0);
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><strong>${cat}</strong></td>
-      <td class="text-center font-bold">${det}</td>
-      <td class="text-center">${off}</td>
-      <td class="text-center">${ord}</td>
-      <td class="text-right text-green font-bold">${formatCurrency(val)}</td>
-    `;
-    catTbody.appendChild(tr);
-  });
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${cat}</strong></td>
+        <td class="text-center font-bold">${det}</td>
+        <td class="text-center">${off}</td>
+        <td class="text-center">${ord}</td>
+        <td class="text-right text-green font-bold">${formatCurrency(val)}</td>
+      `;
+      catTbody.appendChild(tr);
+    });
+  }
 
   renderStageChart();
 }
@@ -732,15 +860,44 @@ function renderStageChart() {
     "Closed/Lost": 0
   };
 
+  const stageValues = {
+    "Detection": 0,
+    "Affaire Sent": 0,
+    "Offer Recv": 0,
+    "Forecast": 0,
+    "Ordered": 0,
+    "Closed/Lost": 0
+  };
+
   filteredDeals.forEach(d => {
     const stage = getStageCategory(d);
-    if (stage === "detection") stageCounts["Detection"]++;
-    else if (stage === "affaire_sent") stageCounts["Affaire Sent"]++;
-    else if (stage === "offer_received") stageCounts["Offer Recv"]++;
-    else if (stage === "forecast") stageCounts["Forecast"]++;
-    else if (stage === "ordered") stageCounts["Ordered"]++;
-    else stageCounts["Closed/Lost"]++;
+    const val = parseFloat(d.offer_value) || 0;
+    if (stage === "detection") { stageCounts["Detection"]++; stageValues["Detection"] += val; }
+    else if (stage === "affaire_sent") { stageCounts["Affaire Sent"]++; stageValues["Affaire Sent"] += val; }
+    else if (stage === "offer_received") { stageCounts["Offer Recv"]++; stageValues["Offer Recv"] += val; }
+    else if (stage === "forecast") { stageCounts["Forecast"]++; stageValues["Forecast"] += val; }
+    else if (stage === "ordered") { stageCounts["Ordered"]++; stageValues["Ordered"] += val; }
+    else { stageCounts["Closed/Lost"]++; stageValues["Closed/Lost"] += val; }
   });
+
+  // Populate Stage Metrics Breakdown Table below Chart
+  const breakdownTbody = document.getElementById("stageBreakdownBody");
+  if (breakdownTbody) {
+    const totalDeals = filteredDeals.length;
+    breakdownTbody.innerHTML = Object.keys(stageCounts).map(st => {
+      const cnt = stageCounts[st];
+      const val = stageValues[st];
+      const pct = totalDeals > 0 ? ((cnt / totalDeals) * 100).toFixed(1) + "%" : "0.0%";
+      return `
+        <tr>
+          <td><strong>${st}</strong></td>
+          <td class="text-center font-bold">${cnt}</td>
+          <td class="text-right font-mono" style="font-weight:700; color:var(--accent-green);">${val > 0 ? formatCurrency(val) : "—"}</td>
+          <td class="text-center font-mono">${pct}</td>
+        </tr>
+      `;
+    }).join("");
+  }
 
   if (stageChartInstance) {
     stageChartInstance.destroy();
@@ -782,138 +939,6 @@ function renderStageChart() {
   });
 }
 
-// ── 10. RENDER: KANBAN BOARD VIEW ─────────────────────────────────────────
-function renderKanban() {
-  const cols = {
-    detection: document.getElementById("cardsDetection"),
-    affaire_sent: document.getElementById("cardsAffaire"),
-    offer_received: document.getElementById("cardsOffer"),
-    forecast: document.getElementById("cardsForecast"),
-    ordered: document.getElementById("cardsOrdered"),
-    closed: document.getElementById("cardsClosed")
-  };
-
-  const counts = {
-    detection: 0,
-    affaire_sent: 0,
-    offer_received: 0,
-    forecast: 0,
-    ordered: 0,
-    closed: 0
-  };
-
-  Object.values(cols).forEach(el => el.innerHTML = "");
-
-  filteredDeals.forEach(deal => {
-    const stage = getStageCategory(deal);
-    counts[stage]++;
-
-    const card = document.createElement("div");
-    card.className = "deal-card";
-    card.draggable = true;
-    card.dataset.id = deal.id;
-
-    const days = getDaysOpen(deal);
-    const stale = getStaleAlert(deal);
-    if (stale) card.classList.add("stale-card");
-
-    const valStr = deal.offer_value > 0 ? formatCurrency(deal.offer_value) : "";
-
-    card.innerHTML = `
-      <div class="deal-card-header">
-        <div class="deal-supplier">${escapeHtml(deal.supplier)}</div>
-        <span class="deal-buyer">${escapeHtml(deal.buyer)}</span>
-      </div>
-      <div class="deal-product">${escapeHtml(deal.product)}</div>
-      ${stale ? `<div class="badge badge-stale" style="margin-bottom:0.4rem;">${stale}</div>` : ""}
-      <div class="deal-card-footer">
-        <span class="deal-value">${valStr}</span>
-        <span class="deal-delay"><i data-lucide="clock" style="width:12px;height:12px;"></i> ${days === "Closed" ? "Closed" : days + "d open"}</span>
-      </div>
-    `;
-
-    card.addEventListener("click", () => openDrawer(deal));
-
-    card.addEventListener("dragstart", (e) => {
-      e.dataTransfer.setData("text/plain", deal.id);
-      card.style.opacity = "0.5";
-    });
-
-    card.addEventListener("dragend", () => {
-      card.style.opacity = "1";
-    });
-
-    cols[stage].appendChild(card);
-  });
-
-  document.getElementById("countDetection").textContent = counts.detection;
-  document.getElementById("countAffaire").textContent = counts.affaire_sent;
-  document.getElementById("countOffer").textContent = counts.offer_received;
-  document.getElementById("countForecast").textContent = counts.forecast;
-  document.getElementById("countOrdered").textContent = counts.ordered;
-  document.getElementById("countClosed").textContent = counts.closed;
-}
-
-function initDragAndDrop() {
-  const dropzones = document.querySelectorAll(".kanban-cards");
-  dropzones.forEach(zone => {
-    zone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      zone.style.background = "rgba(99, 102, 241, 0.08)";
-    });
-
-    zone.addEventListener("dragleave", () => {
-      zone.style.background = "transparent";
-    });
-
-    zone.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      zone.style.background = "transparent";
-      const dealId = parseInt(e.dataTransfer.getData("text/plain"));
-      const targetStage = zone.parentElement.dataset.stage;
-
-      const deal = allDeals.find(d => d.id === dealId);
-      if (!deal) return;
-
-      const todayStr = new Date().toISOString().split("T")[0];
-
-      if (targetStage === "detection") {
-        deal.affaire_created = false;
-        deal.affaire_sent = false;
-        deal.offer_received = false;
-        deal.status = "";
-      } else if (targetStage === "affaire_sent") {
-        deal.affaire_created = true;
-        deal.affaire_sent = true;
-        if (!deal.affaire_date) deal.affaire_date = todayStr;
-      } else if (targetStage === "offer_received") {
-        deal.affaire_created = true;
-        deal.affaire_sent = true;
-        deal.offer_received = true;
-        if (!deal.offer_date) deal.offer_date = todayStr;
-        if (!deal.status || deal.status === "Ordered" || deal.status === "Lost") {
-          deal.status = "To Negotiate";
-        }
-      } else if (targetStage === "forecast") {
-        deal.affaire_created = true;
-        deal.offer_received = true;
-        deal.status = "Negotiated";
-      } else if (targetStage === "ordered") {
-        deal.affaire_created = true;
-        deal.offer_received = true;
-        deal.status = "Ordered";
-      } else if (targetStage === "closed") {
-        if (!deal.status || deal.status === "Negotiated" || deal.status === "Ordered") {
-          deal.status = "Lost";
-        }
-      }
-
-      await saveDealRecord(deal);
-      showToast("Stage Updated", `${deal.supplier} moved to ${targetStage}`);
-    });
-  });
-}
-
 // ── 11. RENDER: TABLE GRID VIEW ───────────────────────────────────────────
 function renderTable() {
   const tbody = document.getElementById("pipelineTableBody");
@@ -922,35 +947,44 @@ function renderTable() {
   document.getElementById("tableFilteredCount").textContent = filteredDeals.length;
   document.getElementById("tableTotalCount").textContent = allDeals.length;
 
+  if (filteredDeals.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="12" class="empty-state">
+          <i data-lucide="inbox"></i>
+          <div>No deals found matching your criteria.</div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
   filteredDeals.forEach((deal, idx) => {
     const days = getDaysOpen(deal);
     const stale = getStaleAlert(deal);
+    const isClosed = days === "Closed";
 
-    let statusBadge = `<span class="badge badge-navy">Draft</span>`;
-    if (deal.status === "Negotiated") statusBadge = `<span class="badge badge-forecast">Forecast</span>`;
-    else if (deal.status === "Ordered") statusBadge = `<span class="badge badge-ordered">Ordered</span>`;
-    else if (deal.status === "Lost" || deal.status === "Cancelled") statusBadge = `<span class="badge badge-closed">${deal.status}</span>`;
-    else if (deal.status) statusBadge = `<span class="badge badge-navy">${deal.status}</span>`;
+    let delayClass = "badge-green";
+    if (isClosed) delayClass = "badge-stale";
+    else if (typeof days === "number") {
+      if (days > 14) delayClass = "badge-rose";
+      else if (days > 7) delayClass = "badge-amber";
+    }
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><span class="text-muted">${idx + 1}</span></td>
-      <td>${deal.entry_date || "-"}</td>
-      <td><strong>${escapeHtml(deal.buyer)}</strong></td>
-      <td>${escapeHtml(deal.supplier)}</td>
+      <td class="font-mono" style="color:var(--text-dim); font-size:0.75rem;">${idx + 1}</td>
+      <td class="font-mono">${escapeHtml(deal.entry_date || "—")}</td>
+      <td class="font-semibold">${escapeHtml(deal.buyer)}</td>
+      <td class="font-bold">${escapeHtml(deal.supplier)}</td>
       <td>${escapeHtml(deal.product)}</td>
-      <td><span class="badge badge-navy">${escapeHtml(deal.product_range)}</span></td>
-      <td class="text-center font-mono">${deal.affaire_number || "-"}</td>
-      <td class="text-center font-mono">${deal.offer_number || "-"}</td>
-      <td class="text-right text-green font-bold">${deal.offer_value > 0 ? formatCurrency(deal.offer_value) : "-"}</td>
-      <td class="text-center">${statusBadge}</td>
-      <td class="text-center font-bold">${days === "Closed" ? "<span class='text-rose'>Closed</span>" : days + " d"}</td>
-      <td class="text-center">${stale ? `<span class="badge badge-stale">${stale}</span>` : "-"}</td>
-      <td class="text-center">
-        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); window.openDrawerById(${deal.id})">
-          <i data-lucide="eye" style="width:13px;height:13px;"></i> Details
-        </button>
-      </td>
+      <td><span class="badge" style="background:var(--bg-card); border:1px solid var(--border-subtle); font-size:0.75rem;">${escapeHtml(deal.product_range || "General")}</span></td>
+      <td class="text-center font-mono">${escapeHtml(deal.affaire_number || "—")}</td>
+      <td class="text-center font-mono">${escapeHtml(deal.offer_number || "—")}</td>
+      <td class="text-right font-mono" style="font-weight:700; color:var(--accent-green);">${deal.offer_value > 0 ? formatCurrency(deal.offer_value) : "—"}</td>
+      <td class="text-center">${deal.status ? `<span class="badge badge-primary">${escapeHtml(deal.status)}</span>` : `<span class="badge badge-gray">Draft</span>`}</td>
+      <td class="text-center">${stale ? `<span class="badge badge-stale">${stale}</span>` : `<span class="badge ${delayClass}">${days === "Closed" ? "Closed" : days + "d"}</span>`}</td>
+      <td class="text-center" style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.75rem; color:var(--text-dim);">${escapeHtml(deal.notes || "—")}</td>
     `;
     tr.addEventListener("click", () => openDrawer(deal));
     tbody.appendChild(tr);
@@ -1027,6 +1061,7 @@ function initModalsAndDrawer() {
     };
 
     await saveDealRecord(newDeal);
+    recordAuditLog("Created Deal", newDeal.supplier, `New detection added by ${currentUser} · Buyer: ${newDeal.buyer}`, newDeal.id);
     addModal.classList.remove("open");
     showToast("Detection Created", `${newDeal.supplier} added to pipeline.`);
   });
@@ -1035,25 +1070,65 @@ function initModalsAndDrawer() {
   document.getElementById("btnCloseDrawer").addEventListener("click", () => drawerOverlay.classList.remove("open"));
   document.getElementById("btnCancelDrawer").addEventListener("click", () => drawerOverlay.classList.remove("open"));
 
-  // Checkbox auto-date stamping in drawer
+  // Checkbox auto-date stamping & inline fields in drawer
   const editAffaireCreated = document.getElementById("editAffaireCreated");
   const editAffaireDate = document.getElementById("editAffaireDate");
+  const editAffaireNumber = document.getElementById("editAffaireNumber");
+  const affaireInlineFields = document.getElementById("affaireInlineFields");
+
   editAffaireCreated.addEventListener("change", () => {
-    if (editAffaireCreated.checked && !editAffaireDate.value) {
-      editAffaireDate.value = new Date().toISOString().split("T")[0];
-    } else if (!editAffaireCreated.checked) {
-      editAffaireDate.value = "";
+    if (editAffaireCreated.checked) {
+      if (affaireInlineFields) affaireInlineFields.style.display = "block";
+      if (!editAffaireDate.value) {
+        editAffaireDate.value = new Date().toISOString().split("T")[0];
+      }
+      setTimeout(() => editAffaireNumber.focus(), 150);
+    } else {
+      if (affaireInlineFields) affaireInlineFields.style.display = "none";
     }
   });
 
   const editOfferReceived = document.getElementById("editOfferReceived");
   const editOfferDate = document.getElementById("editOfferDate");
+  const editOfferNumber = document.getElementById("editOfferNumber");
+  const offerInlineFields = document.getElementById("offerInlineFields");
+
   editOfferReceived.addEventListener("change", () => {
-    if (editOfferReceived.checked && !editOfferDate.value) {
-      editOfferDate.value = new Date().toISOString().split("T")[0];
-    } else if (!editOfferReceived.checked) {
-      editOfferDate.value = "";
+    if (editOfferReceived.checked) {
+      if (offerInlineFields) offerInlineFields.style.display = "block";
+      if (!editOfferDate.value) {
+        editOfferDate.value = new Date().toISOString().split("T")[0];
+      }
+      setTimeout(() => editOfferNumber.focus(), 150);
+    } else {
+      if (offerInlineFields) offerInlineFields.style.display = "none";
     }
+  });
+
+  // Comments / Activity Log Posting
+  const btnAddComment = document.getElementById("btnAddComment");
+  const newCommentInput = document.getElementById("newCommentInput");
+
+  btnAddComment.addEventListener("click", () => {
+    const text = newCommentInput.value.trim();
+    if (!text || !currentDrawerDeal) return;
+
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
+    const timeStr = now.toTimeString().substring(0, 5);
+    const logHeader = `[${dateStr} ${timeStr} · ${currentUser}]`;
+    const newEntry = `${logHeader}: ${text}`;
+
+    if (currentDrawerDeal.notes && currentDrawerDeal.notes.trim()) {
+      currentDrawerDeal.notes = `${currentDrawerDeal.notes.trim()}\n${newEntry}`;
+    } else {
+      currentDrawerDeal.notes = newEntry;
+    }
+
+    newCommentInput.value = "";
+    renderCommentLogs(currentDrawerDeal.notes);
+    recordAuditLog("Added Comment", currentDrawerDeal.supplier, `Note: "${text.substring(0, 60)}${text.length > 60 ? '...' : ''}"`, currentDrawerDeal.id);
+    showToast("Comment Logged", `Added log by ${currentUser}`);
   });
 
   // Save drawer edits
@@ -1062,33 +1137,91 @@ function initModalsAndDrawer() {
     const deal = allDeals.find(d => d.id === id);
     if (!deal) return;
 
+    const affCreated = document.getElementById("editAffaireCreated").checked;
+    const affNum = document.getElementById("editAffaireNumber").value.trim();
+    const offRecv = document.getElementById("editOfferReceived").checked;
+    const offNum = document.getElementById("editOfferNumber").value.trim();
+
+    if (affCreated && !affNum) {
+      alert("⚠️ Mandatory: Please enter the Affaire Number before saving.");
+      const progTab = document.querySelector('.drawer-tab[data-drawer-tab="tabProgression"]');
+      if (progTab) progTab.click();
+      document.getElementById("editAffaireNumber").focus();
+      return;
+    }
+
+    if (offRecv && !offNum) {
+      alert("⚠️ Mandatory: Please enter the Offer Number before saving.");
+      const offTab = document.querySelector('.drawer-tab[data-drawer-tab="tabFinancials"]');
+      if (offTab) offTab.click();
+      document.getElementById("editOfferNumber").focus();
+      return;
+    }
+
     deal.entry_date = document.getElementById("editEntryDate").value;
     deal.buyer = document.getElementById("editBuyer").value;
     deal.supplier = document.getElementById("editSupplier").value.trim();
     deal.product = document.getElementById("editProduct").value.trim();
     deal.product_range = document.getElementById("editCategory").value;
 
-    deal.affaire_created = document.getElementById("editAffaireCreated").checked;
+    deal.affaire_created = affCreated;
     deal.affaire_sent = document.getElementById("editAffaireSent").checked;
-    deal.offer_received = document.getElementById("editOfferReceived").checked;
+    deal.offer_received = offRecv;
     deal.propo_canceled = document.getElementById("editPropoCanceled").checked;
     deal.rejected_affair = document.getElementById("editRejectedAffair").checked;
 
-    deal.affaire_number = document.getElementById("editAffaireNumber").value.trim() || null;
+    deal.affaire_number = affNum || null;
     deal.affaire_date = document.getElementById("editAffaireDate").value || null;
-    deal.offer_number = document.getElementById("editOfferNumber").value.trim() || null;
+    deal.offer_number = offNum || null;
     deal.offer_date = document.getElementById("editOfferDate").value || null;
     deal.offer_value = parseFloat(document.getElementById("editOfferValue").value) || 0;
     deal.status = document.getElementById("editStatus").value;
-    deal.notes = document.getElementById("editNotes").value.trim();
 
     await saveDealRecord(deal);
+    recordAuditLog("Updated Deal", deal.supplier, `Stage: ${getDealStage(deal)} · Value: $${deal.offer_value || 0} by ${currentUser}`, deal.id);
     drawerOverlay.classList.remove("open");
     showToast("Changes Saved", `${deal.supplier} updated successfully.`);
   });
 
-  // 3. Settings Modal
+  // Admin Delete Deal button
+  const btnDeleteDrawer = document.getElementById("btnDeleteDrawerDeal");
+  if (btnDeleteDrawer) {
+    btnDeleteDrawer.addEventListener("click", async () => {
+      if (!isAdmin()) {
+        showToast("Unauthorized", "Only Toby (Admin) can delete pipeline records.");
+        return;
+      }
+      const id = parseInt(document.getElementById("editDealId").value);
+      const deal = allDeals.find(d => d.id === id);
+      if (!deal) return;
+
+      if (confirm(`Are you sure you want to permanently delete "${deal.supplier}" from the pipeline?`)) {
+        const supplierName = deal.supplier;
+        allDeals = allDeals.filter(d => d.id !== id);
+        localStorage.setItem("panama_pipeline_deals", JSON.stringify(allDeals));
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from("detections").delete().eq("id", id);
+          } catch (err) {
+            console.error("Supabase delete error:", err);
+          }
+        }
+
+        recordAuditLog("Deleted Deal", supplierName, `Deal #${id} deleted by Admin (${currentUser}).`);
+        drawerOverlay.classList.remove("open");
+        applyFiltersAndRender();
+        showToast("Deal Deleted", `"${supplierName}" removed from pipeline.`);
+      }
+    });
+  }
+
+  // 3. Settings Modal (Admin Only)
   document.getElementById("btnOpenSettings").addEventListener("click", () => {
+    if (!isAdmin()) {
+      showToast("Admin Restricted", "Cloud Database & Settings are restricted to Toby.");
+      return;
+    }
     const urlEl = document.getElementById("cfgSupabaseUrl");
     const keyEl = document.getElementById("cfgSupabaseKey");
     if (urlEl) urlEl.value = localStorage.getItem("supabase_url") || "";
@@ -1100,6 +1233,7 @@ function initModalsAndDrawer() {
   document.getElementById("btnCloseSettings").addEventListener("click", () => settingsModal.classList.remove("open"));
 
   document.getElementById("btnSaveSettings").addEventListener("click", () => {
+    if (!isAdmin()) return;
     const urlEl = document.getElementById("cfgSupabaseUrl");
     const keyEl = document.getElementById("cfgSupabaseKey");
     const url = urlEl ? urlEl.value.trim() : "";
@@ -1109,19 +1243,49 @@ function initModalsAndDrawer() {
     localStorage.setItem("supabase_key", key);
 
     initSupabase();
+    recordAuditLog("Settings Update", "Cloud DB", `Supabase connection parameters updated by Admin (${currentUser}).`);
     settingsModal.classList.remove("open");
     showToast("Settings Saved", "Cloud database configuration updated.");
   });
 
   document.getElementById("btnResetToLocal").addEventListener("click", async () => {
+    if (!isAdmin()) return;
     if (confirm("Reset local changes and reload initial dataset?")) {
       localStorage.removeItem("panama_pipeline_deals");
       await loadDeals();
       applyFiltersAndRender();
+      recordAuditLog("System Reset", "Database", `Data baseline reloaded by Admin (${currentUser}).`);
       settingsModal.classList.remove("open");
       showToast("Reset Complete", "Data baseline restored.");
     }
   });
+
+  // Team Change Logs Modal
+  const auditModal = document.getElementById("auditModal");
+  const btnOpenAuditLogs = document.getElementById("btnOpenAuditLogs");
+  if (btnOpenAuditLogs) {
+    btnOpenAuditLogs.addEventListener("click", () => {
+      renderGlobalAuditLogs();
+      auditModal.classList.add("open");
+      initLucide();
+    });
+  }
+  const btnCloseAudit = document.getElementById("btnCloseAuditModal");
+  if (btnCloseAudit) {
+    btnCloseAudit.addEventListener("click", () => auditModal.classList.remove("open"));
+  }
+  const btnClearAudit = document.getElementById("btnClearAuditLogs");
+  if (btnClearAudit) {
+    btnClearAudit.addEventListener("click", () => {
+      if (!isAdmin()) return;
+      if (confirm("Clear all team activity logs?")) {
+        globalAuditLogs = [];
+        localStorage.removeItem("panama_audit_logs");
+        renderGlobalAuditLogs();
+        showToast("Logs Cleared", "Audit history reset.");
+      }
+    });
+  }
 
   // Drawer tab switching
   const drawerTabs = document.querySelectorAll(".drawer-tab");
@@ -1143,11 +1307,58 @@ function initModalsAndDrawer() {
   document.getElementById("btnExportTableCSV").addEventListener("click", exportCSV);
 }
 
+let currentDrawerDeal = null;
+
+function renderCommentLogs(notes) {
+  const container = document.getElementById("commentsLogList");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!notes || !notes.trim()) {
+    container.innerHTML = `<div class="comments-log-empty">No comment logs recorded yet.</div>`;
+    return;
+  }
+
+  const lines = notes.split("\n").map(l => l.trim()).filter(Boolean);
+  
+  lines.forEach(line => {
+    const match = line.match(/^\[(.*?)\s*·\s*(.*?)\]:\s*(.*)$/);
+    const item = document.createElement("div");
+    item.className = "log-item";
+
+    if (match) {
+      const timeStr = match[1];
+      const author = match[2];
+      const text = match[3];
+      item.innerHTML = `
+        <div class="log-item-header">
+          <span class="log-author-tag"><i data-lucide="user"></i> ${escapeHtml(author)}</span>
+          <span class="log-timestamp">${escapeHtml(timeStr)}</span>
+        </div>
+        <div class="log-item-text">${escapeHtml(text)}</div>
+      `;
+    } else {
+      item.innerHTML = `
+        <div class="log-item-header">
+          <span class="log-author-tag"><i data-lucide="file-text"></i> Note</span>
+        </div>
+        <div class="log-item-text">${escapeHtml(line)}</div>
+      `;
+    }
+    container.appendChild(item);
+  });
+  initLucide();
+}
+
 function openDrawer(deal) {
+  currentDrawerDeal = deal;
   document.getElementById("editDealId").value = deal.id;
   document.getElementById("drawerSupplierTitle").textContent = deal.supplier || `Deal #${deal.id}`;
   document.getElementById("drawerBuyerBadge").textContent = `👤 ${deal.buyer}`;
   document.getElementById("drawerCategoryBadge").textContent = `🏷️ ${deal.product_range || "General"}`;
+
+  const authorBadge = document.getElementById("commentAuthorBadge");
+  if (authorBadge) authorBadge.textContent = currentUser;
 
   const days = getDaysOpen(deal);
   document.getElementById("drawerDelayBadge").textContent = days === "Closed" ? "🚫 Closed" : `⏱️ ${days}d open`;
@@ -1175,7 +1386,17 @@ function openDrawer(deal) {
   document.getElementById("editOfferDate").value = deal.offer_date || "";
   document.getElementById("editOfferValue").value = deal.offer_value || "";
   document.getElementById("editStatus").value = deal.status || "";
-  document.getElementById("editNotes").value = deal.notes || "";
+
+  // Show/hide inline fields based on state
+  const affInline = document.getElementById("affaireInlineFields");
+  if (affInline) affInline.style.display = deal.affaire_created ? "block" : "none";
+
+  const offInline = document.getElementById("offerInlineFields");
+  if (offInline) offInline.style.display = deal.offer_received ? "block" : "none";
+
+  // Render Activity / Comment logs
+  renderCommentLogs(deal.notes);
+  updateAdminUI();
 
   // Reset to first tab
   document.querySelectorAll(".drawer-tab").forEach(t => t.classList.remove("active"));

@@ -6,14 +6,14 @@
   <title>Panama Purchasing Pipeline · Live Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link rel="stylesheet" href="styles.css?v=2.1">
+  <link rel="stylesheet" href="styles.css?v=6.0">
 </head>
 <body>
   <!-- PIN Lock Overlay (Multi-User Login) -->
@@ -37,385 +37,277 @@
 
   <!-- Main App Shell -->
   <div class="app-shell" id="appShell">
-    <!-- Top Navbar -->
-    <header class="navbar">
-      <div class="nav-left">
-        <div class="brand-logo">
-          <span class="logo-badge">🇵🇦</span>
-          <div>
-            <h1>Panama Pipeline</h1>
-            <span class="sub-brand">Live Purchasing & Stalling Tracker</span>
+    <!-- Pinned Sticky Top Header Block (Line 1: Header & Actions, Line 2: Filters) -->
+    <div class="sticky-top-header">
+      <!-- LINE 1: Top Header Navbar & Action Controls -->
+      <header class="navbar">
+        <div class="nav-left">
+          <div class="brand-logo">
+            <span class="logo-badge">🇵🇦</span>
+            <div>
+              <h1>Panama Pipeline</h1>
+              <span class="sub-brand">Live Purchasing & Stalling Tracker</span>
+            </div>
           </div>
         </div>
 
-        <nav class="nav-tabs">
-          <button class="nav-tab active" data-view="dashboard">
-            <i data-lucide="layout-dashboard"></i>
-            <span>Dashboard</span>
+        <div class="nav-right">
+          <!-- Action Buttons -->
+          <button id="btnOpenAddModal" class="btn btn-primary btn-sm">
+            <i data-lucide="plus-circle"></i>
+            <span>Add Detection</span>
           </button>
-          <button class="nav-tab" data-view="kanban">
-            <i data-lucide="kanban-square"></i>
-            <span>Kanban Board</span>
-          </button>
-          <button class="nav-tab" data-view="table">
-            <i data-lucide="table"></i>
-            <span>Pipeline Grid</span>
-          </button>
-        </nav>
-      </div>
 
-      <div class="nav-right">
-        <!-- Active User Badge -->
-        <div id="activeUserBadge" class="user-pill">
-          <i data-lucide="user"></i>
-          <span id="activeUserName">Toby</span>
+          <button id="btnOpenAuditLogs" class="btn btn-secondary btn-sm" title="View Team Change Logs & Audit History">
+            <i data-lucide="history"></i>
+            <span>Change Logs</span>
+          </button>
+
+          <button id="btnExportCSV" class="btn btn-secondary btn-sm" title="Export Pipeline as CSV">
+            <i data-lucide="download"></i>
+            <span>Export</span>
+          </button>
+
+          <!-- Active User Badge -->
+          <div id="activeUserBadge" class="user-pill">
+            <i data-lucide="user"></i>
+            <span id="activeUserName">Toby (Admin)</span>
+          </div>
+
+          <!-- Light / Dark Mode Toggle Button -->
+          <button id="btnThemeToggle" class="theme-toggle-btn" title="Toggle Light / Dark Mode">
+            <i data-lucide="sun" id="themeIcon"></i>
+          </button>
+
+          <!-- Live Connection Status Indicator -->
+          <div id="connectionStatus" class="connection-status offline" title="Click Settings to configure Supabase Cloud">
+            <span class="status-dot"></span>
+            <span class="status-text">Local Mode</span>
+          </div>
+
+          <button id="btnOpenSettings" class="btn btn-icon btn-sm" title="Cloud Database & Settings (Admin Only)">
+            <i data-lucide="settings"></i>
+          </button>
+
+          <button id="btnLockApp" class="btn btn-icon btn-sm" title="Sign Out & Lock Workspace">
+            <i data-lucide="log-out"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- LINE 2: Single-Line Filters Bar -->
+      <div class="filters-bar dashboard-filters">
+        <div class="filter-group">
+          <label><i data-lucide="calendar"></i> Period:</label>
+          <select id="filterPeriodType" class="select-control">
+            <option value="All Time" selected>All Time</option>
+            <option value="Monthly">Monthly</option>
+            <option value="Weekly">Weekly</option>
+          </select>
+          <select id="filterPeriodValue" class="select-control hidden"></select>
         </div>
 
-        <!-- Light / Dark Mode Toggle Button -->
-        <button id="btnThemeToggle" class="theme-toggle-btn" title="Toggle Light / Dark Mode">
-          <i data-lucide="sun" id="themeIcon"></i>
-        </button>
-
-        <!-- Live Connection Status Indicator -->
-        <div id="connectionStatus" class="connection-status offline" title="Click Settings to configure Supabase Cloud">
-          <span class="status-dot"></span>
-          <span class="status-text">Local Mode</span>
+        <div class="filter-group">
+          <label><i data-lucide="user"></i> Buyer:</label>
+          <select id="filterBuyer" class="select-control">
+            <option value="All">All 6 Buyers</option>
+            <option value="Ashley Jaen">Ashley Jaen</option>
+            <option value="Daniel Fung">Daniel Fung</option>
+            <option value="Jessica Cruz">Jessica Cruz</option>
+            <option value="Jorge Chandeck">Jorge Chandeck</option>
+            <option value="Julio Arispe">Julio Arispe</option>
+            <option value="Marian Rovira">Marian Rovira</option>
+          </select>
         </div>
 
-        <button id="btnOpenAddModal" class="btn btn-primary">
-          <i data-lucide="plus-circle"></i>
-          <span>Add Detection</span>
-        </button>
-
-        <button id="btnExportCSV" class="btn btn-secondary" title="Export Pipeline as CSV">
-          <i data-lucide="download"></i>
-          <span>Export</span>
-        </button>
-
-        <button id="btnOpenSettings" class="btn btn-icon" title="Cloud Database & Settings">
-          <i data-lucide="settings"></i>
-        </button>
-
-        <button id="btnLockApp" class="btn btn-icon" title="Sign Out & Lock Workspace">
-          <i data-lucide="log-out"></i>
-        </button>
-      </div>
-    </header>
-
-    <!-- Global Filters Bar -->
-    <div class="filters-bar">
-      <div class="filter-group">
-        <label><i data-lucide="calendar"></i> Period:</label>
-        <select id="filterPeriodType" class="select-control">
-          <option value="All Time" selected>All Time</option>
-          <option value="Monthly">Monthly</option>
-          <option value="Weekly">Weekly</option>
-        </select>
-        <select id="filterPeriodValue" class="select-control hidden"></select>
-      </div>
-
-      <div class="filter-group">
-        <label><i data-lucide="user"></i> Buyer:</label>
-        <select id="filterBuyer" class="select-control">
-          <option value="All">All 6 Buyers</option>
-          <option value="Ashley Jaen">Ashley Jaen</option>
-          <option value="Daniel Fung">Daniel Fung</option>
-          <option value="Jessica Cruz">Jessica Cruz</option>
-          <option value="Jorge Chandeck">Jorge Chandeck</option>
-          <option value="Julio Arispe">Julio Arispe</option>
-          <option value="Marian Rovira">Marian Rovira</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label><i data-lucide="tag"></i> Category:</label>
-        <select id="filterCategory" class="select-control">
-          <option value="All">All Categories</option>
-        </select>
-      </div>
-
-      <div class="search-box">
-        <i data-lucide="search"></i>
-        <input type="text" id="searchInput" placeholder="Search supplier, product, affaire #, offer #...">
-      </div>
-
-      <div class="toggle-group-wrapper">
-        <div class="toggle-item">
-          <label class="toggle-switch">
-            <input type="checkbox" id="filterOngoingOnly">
-            <span class="slider slider-green"></span>
-          </label>
-          <span class="toggle-label text-green">Ongoing Only (<span id="ongoingCountBadge">0</span>)</span>
+        <div class="filter-group">
+          <label><i data-lucide="tag"></i> Category:</label>
+          <select id="filterCategory" class="select-control">
+            <option value="All">All Categories</option>
+          </select>
         </div>
 
-        <div class="toggle-item">
-          <label class="toggle-switch">
-            <input type="checkbox" id="filterStaleOnly">
-            <span class="slider"></span>
-          </label>
-          <span class="toggle-label">Stale Only (<span id="staleCountBadge">0</span>)</span>
+        <div class="filter-group">
+          <label><i data-lucide="activity"></i> Status:</label>
+          <select id="filterStatus" class="select-control">
+            <option value="All">All Statuses</option>
+            <option value="Detection">Detection (Draft)</option>
+            <option value="Affaire Sent">Affaire Sent</option>
+            <option value="Offer Received">Offer Received</option>
+            <option value="To Negotiate">To Negotiate</option>
+            <option value="To Revalue">To Revalue</option>
+            <option value="Negotiated">Negotiated (Forecast)</option>
+            <option value="Ordered">Ordered 🟢</option>
+            <option value="Lost">Lost ❌</option>
+            <option value="Cancelled">Cancelled 🚫</option>
+            <option value="propo_canceled">Propo Canceled</option>
+            <option value="rejected_affair">Rejected Affair</option>
+          </select>
+        </div>
+
+        <div class="search-box filter-search-box">
+          <i data-lucide="search"></i>
+          <input type="text" id="searchInput" placeholder="Search supplier, product, affaire #...">
+        </div>
+
+        <div class="toggle-group-wrapper">
+          <div class="toggle-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="filterOngoingOnly">
+              <span class="slider slider-green"></span>
+            </label>
+            <span class="toggle-label text-green">Ongoing Only (<span id="ongoingCountBadge">0</span>)</span>
+          </div>
+
+          <div class="toggle-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="filterStaleOnly">
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Stale Only (<span id="staleCountBadge">0</span>)</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Main Content Container -->
+    <!-- Main Dashboard Container -->
     <main class="main-content">
       
-      <!-- ================= 1. DASHBOARD VIEW ================= -->
-      <section id="viewDashboard" class="view-section active">
-        <!-- High-level KPI Cards -->
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-title">TOTAL DETECTIONS</span>
-              <div class="kpi-icon icon-blue"><i data-lucide="radar"></i></div>
-            </div>
-            <div class="kpi-value" id="kpiTotalDetections">0</div>
-            <div class="kpi-meta" id="kpiDetectionsMeta">6 Buyers Active</div>
+      <!-- High-Level Metric KPI Cards Row (4 Cards) -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">TOTAL DETECTIONS</span>
+            <div class="kpi-icon icon-blue"><i data-lucide="radar"></i></div>
           </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-title">ACTIVE PIPELINE VALUE</span>
-              <div class="kpi-icon icon-green"><i data-lucide="dollar-sign"></i></div>
-            </div>
-            <div class="kpi-value" id="kpiActiveValue">$0</div>
-            <div class="kpi-meta">All non-closed open deals</div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-title">FORECAST VALUE</span>
-              <div class="kpi-icon icon-indigo"><i data-lucide="sparkles"></i></div>
-            </div>
-            <div class="kpi-value" id="kpiForecastValue">$0</div>
-            <div class="kpi-meta" id="kpiForecastDeals">0 Negotiated Deals</div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-title">ORDERED VALUE</span>
-              <div class="kpi-icon icon-emerald"><i data-lucide="check-circle-2"></i></div>
-            </div>
-            <div class="kpi-value" id="kpiOrderedValue">$0</div>
-            <div class="kpi-meta" id="kpiOrderedDeals">0 Closed Orders</div>
-          </div>
-
-          <div class="kpi-card kpi-alert">
-            <div class="kpi-header">
-              <span class="kpi-title">STALE DEALS</span>
-              <div class="kpi-icon icon-amber"><i data-lucide="alert-triangle"></i></div>
-            </div>
-            <div class="kpi-value text-amber" id="kpiStaleDeals">0</div>
-            <div class="kpi-meta">Exceeds 5d / 14d stage thresholds</div>
-          </div>
+          <div class="kpi-value" id="kpiTotalDetections">0</div>
+          <div class="kpi-meta" id="kpiDetectionsMeta">6 Buyers Active</div>
         </div>
 
-        <!-- Funnel Table & Analytics Charts -->
-        <div class="dashboard-grid">
-          <!-- Buyer Funnel Breakdown -->
-          <div class="dash-panel buyer-panel">
-            <div class="panel-header">
-              <h3><i data-lucide="users"></i> Buyer Funnel & Stage Performance</h3>
-              <span class="badge badge-navy">Panama Team</span>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table" id="buyerFunnelTable">
-                <thead>
-                  <tr>
-                    <th>Buyer</th>
-                    <th class="text-center">Detections</th>
-                    <th class="text-center">Affaires</th>
-                    <th class="text-center">Sent</th>
-                    <th class="text-center">Offers</th>
-                    <th class="text-center">In Progress</th>
-                    <th class="text-center">Forecast ($)</th>
-                    <th class="text-center">Orders</th>
-                    <th class="text-center">Ordered ($)</th>
-                    <th class="text-center">Active ($)</th>
-                    <th class="text-center">Rate</th>
-                    <th class="text-center">Signal</th>
-                  </tr>
-                </thead>
-                <tbody id="buyerFunnelBody"></tbody>
-                <tfoot id="buyerFunnelFoot"></tfoot>
-              </table>
-            </div>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">ACTIVE PIPELINE VALUE</span>
+            <div class="kpi-icon icon-green"><i data-lucide="dollar-sign"></i></div>
           </div>
-
-          <!-- Stage Breakdown Chart -->
-          <div class="dash-panel chart-panel">
-            <div class="panel-header">
-              <h3><i data-lucide="pie-chart"></i> Pipeline Stage Distribution</h3>
-            </div>
-            <div class="chart-container">
-              <canvas id="stageChart"></canvas>
-            </div>
-          </div>
+          <div class="kpi-value" id="kpiActiveValue">$0</div>
+          <div class="kpi-meta">All non-closed open deals</div>
         </div>
 
-        <!-- Section 2: Status Breakdown & Category Performance -->
-        <div class="dashboard-grid bottom-grid">
-          <!-- Status Breakdown -->
-          <div class="dash-panel">
-            <div class="panel-header">
-              <h3><i data-lucide="bar-chart-2"></i> Status Breakdown</h3>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th class="text-center">Count</th>
-                  <th class="text-center">% Total</th>
-                  <th class="text-right">Value ($)</th>
-                  <th class="text-center">Avg Days</th>
-                </tr>
-              </thead>
-              <tbody id="statusBreakdownBody"></tbody>
-            </table>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">FORECAST VALUE</span>
+            <div class="kpi-icon icon-indigo"><i data-lucide="sparkles"></i></div>
           </div>
-
-          <!-- Top Category Performance -->
-          <div class="dash-panel">
-            <div class="panel-header">
-              <h3><i data-lucide="package"></i> Category Performance</h3>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Product Range</th>
-                  <th class="text-center">Detections</th>
-                  <th class="text-center">Offers</th>
-                  <th class="text-center">Ordered</th>
-                  <th class="text-right">Value ($)</th>
-                </tr>
-              </thead>
-              <tbody id="categoryPerformanceBody"></tbody>
-            </table>
-          </div>
+          <div class="kpi-value" id="kpiForecastValue">$0</div>
+          <div class="kpi-meta" id="kpiForecastDeals">0 Negotiated Deals</div>
         </div>
-      </section>
 
-
-      <!-- ================= 2. KANBAN BOARD VIEW ================= -->
-      <section id="viewKanban" class="view-section">
-        <div class="kanban-wrapper">
-          <!-- Column 0: Detection -->
-          <div class="kanban-col" data-stage="detection">
-            <div class="kanban-header stage-detection">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>0 · Detection</h4>
-              </div>
-              <span class="card-count" id="countDetection">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsDetection"></div>
+        <div class="kpi-card kpi-alert">
+          <div class="kpi-header">
+            <span class="kpi-title">STALE DEALS</span>
+            <div class="kpi-icon icon-amber"><i data-lucide="alert-triangle"></i></div>
           </div>
-
-          <!-- Column 1: Affaire Sent -->
-          <div class="kanban-col" data-stage="affaire_sent">
-            <div class="kanban-header stage-affaire">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>1 · Affaire Sent</h4>
-              </div>
-              <span class="card-count" id="countAffaire">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsAffaire"></div>
-          </div>
-
-          <!-- Column 2: Offer Received / In Progress -->
-          <div class="kanban-col" data-stage="offer_received">
-            <div class="kanban-header stage-offer">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>2 · Offer Received</h4>
-              </div>
-              <span class="card-count" id="countOffer">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsOffer"></div>
-          </div>
-
-          <!-- Column 3: Forecast (Negotiated) -->
-          <div class="kanban-col" data-stage="forecast">
-            <div class="kanban-header stage-forecast">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>3 · Forecast (Negotiated)</h4>
-              </div>
-              <span class="card-count" id="countForecast">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsForecast"></div>
-          </div>
-
-          <!-- Column 4: Ordered -->
-          <div class="kanban-col" data-stage="ordered">
-            <div class="kanban-header stage-ordered">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>4 · Ordered 🟢</h4>
-              </div>
-              <span class="card-count" id="countOrdered">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsOrdered"></div>
-          </div>
-
-          <!-- Column 5: Closed / Lost / Canceled -->
-          <div class="kanban-col" data-stage="closed">
-            <div class="kanban-header stage-closed">
-              <div class="col-title">
-                <span class="stage-dot"></span>
-                <h4>5 · Closed / Lost 🚫</h4>
-              </div>
-              <span class="card-count" id="countClosed">0</span>
-            </div>
-            <div class="kanban-cards" id="cardsClosed"></div>
-          </div>
+          <div class="kpi-value text-amber" id="kpiStaleDeals">0</div>
+          <div class="kpi-meta">Exceeds 5d / 14d stage thresholds</div>
         </div>
-      </section>
+      </div>
 
-
-      <!-- ================= 3. TABLE GRID VIEW ================= -->
-      <section id="viewTable" class="view-section">
-        <div class="table-card">
-          <div class="table-actions">
-            <div class="table-count-summary">
-              Showing <span id="tableFilteredCount" class="font-bold">0</span> of <span id="tableTotalCount">0</span> deals
-            </div>
-            <div class="table-buttons">
-              <button class="btn btn-secondary btn-sm" id="btnToggleDensity">
-                <i data-lucide="rows"></i> <span id="densityLabel">Compact Mode</span>
-              </button>
-              <button class="btn btn-secondary btn-sm" id="btnExportTableCSV">
-                <i data-lucide="file-spreadsheet"></i> Export Filtered View
-              </button>
-            </div>
+      <!-- Middle Grid: Buyer Funnel (Left 2/3) & Stage Distribution Chart + Breakdown (Right 1/3) -->
+      <div class="dashboard-grid">
+        <!-- Buyer Funnel Breakdown -->
+        <div class="dash-panel buyer-panel">
+          <div class="panel-header">
+            <h3><i data-lucide="users"></i> Buyer Funnel & Stage Performance</h3>
+            <span class="badge badge-navy">Panama Team</span>
           </div>
-
           <div class="table-responsive">
-            <table class="data-table interactive-table" id="mainPipelineTable">
+            <table class="data-table" id="buyerFunnelTable">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Entry Date</th>
                   <th>Buyer</th>
-                  <th>Supplier</th>
-                  <th>Product</th>
-                  <th>Category</th>
-                  <th class="text-center">Affaire #</th>
-                  <th class="text-center">Offer #</th>
-                  <th class="text-right">Offer Value ($)</th>
-                  <th class="text-center">Status</th>
-                  <th class="text-center">Days Open</th>
-                  <th class="text-center">Stale Alert</th>
-                  <th class="text-center">Actions</th>
+                  <th class="text-center">Detections</th>
+                  <th class="text-center">Affaires</th>
+                  <th class="text-center">Sent</th>
+                  <th class="text-center">Offers</th>
+                  <th class="text-center">In Progress</th>
+                  <th class="text-center">Forecast ($)</th>
+                  <th class="text-center">Orders</th>
+                  <th class="text-center">Ordered ($)</th>
+                  <th class="text-center">Active ($)</th>
+                  <th class="text-center">Rate</th>
+                  <th class="text-center">Signal</th>
                 </tr>
               </thead>
-              <tbody id="pipelineTableBody"></tbody>
+              <tbody id="buyerFunnelBody"></tbody>
+              <tfoot id="buyerFunnelFoot"></tfoot>
             </table>
           </div>
         </div>
-      </section>
+
+        <!-- Stage Breakdown Chart & Distribution Panel -->
+        <div class="dash-panel chart-panel">
+          <div class="panel-header">
+            <h3><i data-lucide="pie-chart"></i> Pipeline Stage Distribution</h3>
+          </div>
+          <div class="chart-container" style="height: 220px;">
+            <canvas id="stageChart"></canvas>
+          </div>
+
+          <!-- Stage Metrics Breakdown Table Below Chart -->
+          <div class="table-responsive" style="margin-top: 1rem;">
+            <table class="data-table compact" id="stageBreakdownTable">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th class="text-center">Deals</th>
+                  <th class="text-right">Value ($)</th>
+                  <th class="text-center">% Total</th>
+                </tr>
+              </thead>
+              <tbody id="stageBreakdownBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Panel: Full Pipeline Grid Data Table -->
+      <div class="table-card" style="margin-top: 1.25rem;">
+        <div class="table-actions">
+          <div class="table-count-summary" style="font-size: 0.95rem; font-weight: 700;">
+            Showing <span id="tableFilteredCount" class="font-bold text-primary">0</span> of <span id="tableTotalCount">0</span> deals
+          </div>
+          <div class="table-buttons">
+            <button class="btn btn-secondary btn-sm" id="btnToggleDensity">
+              <i data-lucide="rows"></i> <span id="densityLabel">Compact Mode</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btnExportTableCSV">
+              <i data-lucide="file-spreadsheet"></i> Export Filtered View
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table interactive-table" id="mainPipelineTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Entry Date</th>
+                <th>Buyer</th>
+                <th>Supplier</th>
+                <th>Product</th>
+                <th>Category</th>
+                <th class="text-center">Affaire #</th>
+                <th class="text-center">Offer #</th>
+                <th class="text-right">Offer Value ($)</th>
+                <th class="text-center">Status</th>
+                <th class="text-center">Days Open</th>
+                <th class="text-center">Stale Alert</th>
+              </tr>
+            </thead>
+            <tbody id="pipelineTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -495,196 +387,261 @@
           </div>
           <button class="btn-close-drawer" id="btnCloseDrawer" title="Close Drawer">&times;</button>
         </div>
-
-        <!-- Drawer Segmented Tabs -->
-        <div class="drawer-nav-tabs">
-          <button type="button" class="drawer-tab active" data-drawer-tab="tabOverview">
-            <i data-lucide="file-text"></i> Overview
-          </button>
-          <button type="button" class="drawer-tab" data-drawer-tab="tabProgression">
-            <i data-lucide="check-circle-2"></i> Progression
-          </button>
-          <button type="button" class="drawer-tab" data-drawer-tab="tabFinancials">
-            <i data-lucide="dollar-sign"></i> Tracking & Value
-          </button>
-        </div>
       </div>
 
-      <div class="drawer-body">
-        <form id="drawerEditForm">
-          <input type="hidden" id="editDealId">
-          
-          <!-- TAB 1: OVERVIEW -->
-          <div id="tabOverview" class="drawer-tab-content active">
-            <div class="drawer-section">
-              <div class="drawer-section-title"><i data-lucide="building-2"></i> Supplier & Product Details</div>
-              <div class="form-grid" style="padding:0; gap:0.85rem;">
-                <div class="form-group full-width">
-                  <label>Supplier Name *</label>
-                  <input type="text" id="editSupplier" class="form-control" placeholder="Supplier Company" required>
-                </div>
-                <div class="form-group full-width">
-                  <label>Product Description *</label>
-                  <input type="text" id="editProduct" class="form-control" placeholder="Product details / quantities" required>
-                </div>
-                <div class="form-group">
-                  <label>Entry Date *</label>
-                  <input type="date" id="editEntryDate" class="form-control" required>
-                </div>
-                <div class="form-group">
-                  <label>Assigned Buyer *</label>
-                  <select id="editBuyer" class="form-control" required>
-                    <option value="Ashley Jaen">Ashley Jaen</option>
-                    <option value="Daniel Fung">Daniel Fung</option>
-                    <option value="Jessica Cruz">Jessica Cruz</option>
-                    <option value="Jorge Chandeck">Jorge Chandeck</option>
-                    <option value="Julio Arispe">Julio Arispe</option>
-                    <option value="Marian Rovira">Marian Rovira</option>
-                  </select>
-                </div>
-                <div class="form-group full-width">
-                  <label>Product Range (Category) *</label>
-                  <select id="editCategory" class="form-control" required></select>
-                </div>
-              </div>
-            </div>
-
-            <div class="drawer-section">
-              <div class="drawer-section-title"><i data-lucide="message-square"></i> Follow-up Notes & Comments</div>
-              <textarea id="editNotes" class="form-control" rows="3" placeholder="Add negotiation remarks, supplier deadlines, or follow-up history..."></textarea>
-            </div>
+      <div class="drawer-body modal-split-body">
+        <!-- LEFT COLUMN: Workflow Tabs & Form Fields (60% width) -->
+        <div class="modal-left-col">
+          <!-- Segmented Tab Navigation Bar -->
+          <div class="drawer-nav-tabs">
+            <button type="button" class="drawer-tab active" data-drawer-tab="tabOverview">
+              <i data-lucide="package"></i> Supplier & Lot
+            </button>
+            <button type="button" class="drawer-tab" data-drawer-tab="tabProgression">
+              <i data-lucide="folder-git-2"></i> Affaire Progress
+            </button>
+            <button type="button" class="drawer-tab" data-drawer-tab="tabFinancials">
+              <i data-lucide="badge-dollar-sign"></i> Offer & Status
+            </button>
           </div>
 
-          <!-- TAB 2: STAGE PROGRESSION -->
-          <div id="tabProgression" class="drawer-tab-content">
-            <div class="drawer-section">
-              <div class="drawer-section-title"><i data-lucide="workflow"></i> Stage Milestones</div>
-              <div class="stage-toggle-cards">
-                
-                <label class="toggle-card">
-                  <input type="checkbox" id="editAffaireCreated">
-                  <div class="toggle-card-body">
-                    <div class="toggle-card-header">
-                      <span class="toggle-icon icon-aff"><i data-lucide="folder-plus"></i></span>
-                      <strong>Affaire Created</strong>
-                    </div>
-                    <span class="toggle-card-desc">Auto-stamps affaire creation date</span>
+          <form id="drawerEditForm">
+            <input type="hidden" id="editDealId">
+            
+            <!-- TAB 1: SUPPLIER & LOT DETAILS -->
+            <div id="tabOverview" class="drawer-tab-content active">
+              <div class="drawer-section">
+                <div class="drawer-section-title"><i data-lucide="building-2"></i> Supplier & Product Details</div>
+                <div class="form-grid" style="padding:0; gap:0.85rem;">
+                  <div class="form-group full-width">
+                    <label>Supplier Name *</label>
+                    <input type="text" id="editSupplier" class="form-control" placeholder="Supplier Company" required>
                   </div>
-                  <span class="toggle-check-indicator"></span>
-                </label>
-
-                <label class="toggle-card">
-                  <input type="checkbox" id="editAffaireSent">
-                  <div class="toggle-card-body">
-                    <div class="toggle-card-header">
-                      <span class="toggle-icon icon-sent"><i data-lucide="send"></i></span>
-                      <strong>Affaire Sent</strong>
-                    </div>
-                    <span class="toggle-card-desc">Transferred to buyer / supplier</span>
+                  <div class="form-group full-width">
+                    <label>Product Description *</label>
+                    <input type="text" id="editProduct" class="form-control" placeholder="Product details / quantities" required>
                   </div>
-                  <span class="toggle-check-indicator"></span>
-                </label>
-
-                <label class="toggle-card">
-                  <input type="checkbox" id="editOfferReceived">
-                  <div class="toggle-card-body">
-                    <div class="toggle-card-header">
-                      <span class="toggle-icon icon-off"><i data-lucide="file-check"></i></span>
-                      <strong>Offer Received</strong>
-                    </div>
-                    <span class="toggle-card-desc">Auto-stamps offer reception date</span>
+                  <div class="form-group">
+                    <label>Entry Date *</label>
+                    <input type="date" id="editEntryDate" class="form-control" required>
                   </div>
-                  <span class="toggle-check-indicator"></span>
-                </label>
-
+                  <div class="form-group">
+                    <label>Assigned Buyer *</label>
+                    <select id="editBuyer" class="form-control" required>
+                      <option value="Ashley Jaen">Ashley Jaen</option>
+                      <option value="Daniel Fung">Daniel Fung</option>
+                      <option value="Jessica Cruz">Jessica Cruz</option>
+                      <option value="Jorge Chandeck">Jorge Chandeck</option>
+                      <option value="Julio Arispe">Julio Arispe</option>
+                      <option value="Marian Rovira">Marian Rovira</option>
+                    </select>
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Product Range (Category) *</label>
+                    <select id="editCategory" class="form-control" required></select>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div class="drawer-section danger-section">
-              <div class="drawer-section-title text-rose"><i data-lucide="alert-octagon"></i> Rejections & Cancellations</div>
-              <div class="stage-toggle-cards">
+              <!-- At the bottom of Tab 1: Propo Canceled -->
+              <div class="drawer-section danger-section">
+                <div class="drawer-section-title text-rose"><i data-lucide="x-circle"></i> Proposal Status</div>
                 <label class="toggle-card danger-card">
                   <input type="checkbox" id="editPropoCanceled">
                   <div class="toggle-card-body">
                     <div class="toggle-card-header">
                       <span class="toggle-icon icon-danger"><i data-lucide="x-circle"></i></span>
-                      <strong>Proposition Canceled</strong>
+                      <strong>Propo Canceled</strong>
                     </div>
-                    <span class="toggle-card-desc">Marks deal as closed / discontinued</span>
-                  </div>
-                  <span class="toggle-check-indicator"></span>
-                </label>
-
-                <label class="toggle-card danger-card">
-                  <input type="checkbox" id="editRejectedAffair">
-                  <div class="toggle-card-body">
-                    <div class="toggle-card-header">
-                      <span class="toggle-icon icon-danger"><i data-lucide="ban"></i></span>
-                      <strong>Rejected Affair</strong>
-                    </div>
-                    <span class="toggle-card-desc">Affaire rejected during negotiation</span>
+                    <span class="toggle-card-desc">Marks proposal as closed / discontinued</span>
                   </div>
                   <span class="toggle-check-indicator"></span>
                 </label>
               </div>
             </div>
-          </div>
 
-          <!-- TAB 3: FINANCIALS & DATES -->
-          <div id="tabFinancials" class="drawer-tab-content">
-            <div class="drawer-section">
-              <div class="drawer-section-title"><i data-lucide="hash"></i> Tracking Numbers & Timeline</div>
-              <div class="form-grid" style="padding:0; gap:0.85rem;">
-                <div class="form-group">
-                  <label>Affaire Number</label>
-                  <input type="text" id="editAffaireNumber" class="form-control font-mono" placeholder="e.g. 1167154">
-                </div>
-                <div class="form-group">
-                  <label>Affaire Creation Date</label>
-                  <input type="date" id="editAffaireDate" class="form-control">
-                </div>
-                <div class="form-group">
-                  <label>Offer Number</label>
-                  <input type="text" id="editOfferNumber" class="form-control font-mono" placeholder="e.g. 1000193860">
-                </div>
-                <div class="form-group">
-                  <label>Offer Reception Date</label>
-                  <input type="date" id="editOfferDate" class="form-control">
+            <!-- TAB 2: AFFAIRE PROGRESS -->
+            <div id="tabProgression" class="drawer-tab-content">
+              <div class="drawer-section">
+                <div class="drawer-section-title"><i data-lucide="folder-git-2"></i> Affaire Milestone Progression</div>
+                <div class="stage-toggle-cards">
+                  
+                  <!-- 1. Affaire Created -->
+                  <div class="milestone-card-wrapper">
+                    <label class="toggle-card">
+                      <input type="checkbox" id="editAffaireCreated">
+                      <div class="toggle-card-body">
+                        <div class="toggle-card-header">
+                          <span class="toggle-icon icon-aff"><i data-lucide="folder-plus"></i></span>
+                          <strong>Affaire Created</strong>
+                        </div>
+                        <span class="toggle-card-desc">Auto-fills today's date & requires Affaire #</span>
+                      </div>
+                      <span class="toggle-check-indicator"></span>
+                    </label>
+
+                    <div id="affaireInlineFields" class="milestone-inline-fields" style="display:none;">
+                      <div class="form-grid" style="padding:0.75rem; gap:0.6rem; background:var(--bg-panel); border-radius:8px; margin-top:0.4rem; border:1px solid var(--border-subtle);">
+                        <div class="form-group">
+                          <label style="font-size:0.75rem; font-weight:700;">Affaire Number *</label>
+                          <input type="text" id="editAffaireNumber" class="form-control font-mono" placeholder="e.g. 1167154">
+                        </div>
+                        <div class="form-group">
+                          <label style="font-size:0.75rem; font-weight:700;">Creation Date *</label>
+                          <input type="date" id="editAffaireDate" class="form-control">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 2. Rejected Affair -->
+                  <label class="toggle-card danger-card">
+                    <input type="checkbox" id="editRejectedAffair">
+                    <div class="toggle-card-body">
+                      <div class="toggle-card-header">
+                        <span class="toggle-icon icon-danger"><i data-lucide="ban"></i></span>
+                        <strong>Rejected Affair</strong>
+                      </div>
+                      <span class="toggle-card-desc">Affaire rejected during negotiation</span>
+                    </div>
+                    <span class="toggle-check-indicator"></span>
+                  </label>
+
+                  <!-- 3. Affaire Sent -->
+                  <label class="toggle-card">
+                    <input type="checkbox" id="editAffaireSent">
+                    <div class="toggle-card-body">
+                      <div class="toggle-card-header">
+                        <span class="toggle-icon icon-sent"><i data-lucide="send"></i></span>
+                        <strong>Affaire Sent</strong>
+                      </div>
+                      <span class="toggle-card-desc">Transferred to buyer / supplier</span>
+                    </div>
+                    <span class="toggle-check-indicator"></span>
+                  </label>
+
                 </div>
               </div>
             </div>
 
-            <div class="drawer-section">
-              <div class="drawer-section-title"><i data-lucide="badge-dollar-sign"></i> Deal Valuation & Stage Status</div>
-              <div class="form-grid" style="padding:0; gap:0.85rem;">
-                <div class="form-group">
-                  <label>Offer Value ($ USD)</label>
-                  <input type="number" step="0.01" min="0" id="editOfferValue" class="form-control font-mono" placeholder="0.00" style="font-weight:700; color:var(--accent-green);">
+            <!-- TAB 3: OFFER PROGRESS & STATUS -->
+            <div id="tabFinancials" class="drawer-tab-content">
+              <div class="drawer-section">
+                <div class="drawer-section-title"><i data-lucide="badge-dollar-sign"></i> Offer Reception & Details</div>
+                <div class="stage-toggle-cards">
+                  
+                  <!-- 1. Offer Received -->
+                  <div class="milestone-card-wrapper">
+                    <label class="toggle-card">
+                      <input type="checkbox" id="editOfferReceived">
+                      <div class="toggle-card-body">
+                        <div class="toggle-card-header">
+                          <span class="toggle-icon icon-off"><i data-lucide="file-check"></i></span>
+                          <strong>Offer Received</strong>
+                        </div>
+                        <span class="toggle-card-desc">Auto-fills today's date & requires Offer #</span>
+                      </div>
+                      <span class="toggle-check-indicator"></span>
+                    </label>
+
+                    <div id="offerInlineFields" class="milestone-inline-fields" style="display:none;">
+                      <div class="form-grid" style="padding:0.75rem; gap:0.6rem; background:var(--bg-panel); border-radius:8px; margin-top:0.4rem; border:1px solid var(--border-subtle);">
+                        <div class="form-group">
+                          <label style="font-size:0.75rem; font-weight:700;">Offer Number *</label>
+                          <input type="text" id="editOfferNumber" class="form-control font-mono" placeholder="e.g. 1000193860">
+                        </div>
+                        <div class="form-group">
+                          <label style="font-size:0.75rem; font-weight:700;">Reception Date *</label>
+                          <input type="date" id="editOfferDate" class="form-control">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
-                <div class="form-group">
-                  <label>Pipeline Status</label>
-                  <select id="editStatus" class="form-control">
-                    <option value="">Detection (Draft)</option>
-                    <option value="To Negotiate">To Negotiate</option>
-                    <option value="To Revalue">To Revalue</option>
-                    <option value="Negotiated">Negotiated (Forecast)</option>
-                    <option value="Ordered">Ordered 🟢</option>
-                    <option value="Lost">Lost ❌</option>
-                    <option value="Cancelled">Cancelled 🚫</option>
-                  </select>
+              </div>
+
+              <div class="drawer-section">
+                <div class="drawer-section-title"><i data-lucide="dollar-sign"></i> Offer Value & Pipeline Status</div>
+                <div class="form-grid" style="padding:0; gap:0.85rem;">
+                  <div class="form-group">
+                    <label>Offer Value ($ USD)</label>
+                    <input type="number" step="0.01" min="0" id="editOfferValue" class="form-control font-mono" placeholder="0.00" style="font-weight:700; color:var(--accent-green);">
+                  </div>
+                  <div class="form-group">
+                    <label>Pipeline Status</label>
+                    <select id="editStatus" class="form-control">
+                      <option value="">Detection (Draft)</option>
+                      <option value="To Negotiate">To Negotiate</option>
+                      <option value="To Revalue">To Revalue</option>
+                      <option value="Negotiated">Negotiated (Forecast)</option>
+                      <option value="Ordered">Ordered 🟢</option>
+                      <option value="Lost">Lost ❌</option>
+                      <option value="Cancelled">Cancelled 🚫</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-        </form>
+          </form>
+        </div>
+
+        <!-- RIGHT COLUMN: Activity & Comments Log Sidebar (40% width) -->
+        <div class="modal-right-col">
+          <div class="drawer-section comments-sidebar-section">
+            <div class="drawer-section-title">
+              <i data-lucide="message-square"></i> Activity & Comments Log
+            </div>
+            
+            <div id="commentsLogList" class="comments-log-list">
+              <!-- Dynamically rendered comment entries -->
+            </div>
+            
+            <div class="add-log-box">
+              <textarea id="newCommentInput" class="form-control" rows="3" placeholder="Write a comment or follow-up note..."></textarea>
+              <div class="add-log-actions">
+                <span class="text-muted" style="font-size:0.75rem;">Logging as: <strong id="commentAuthorBadge" style="color:var(--primary);">Toby</strong></span>
+                <button type="button" id="btnAddComment" class="btn btn-primary btn-sm">
+                  <i data-lucide="plus"></i> Add Log
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="drawer-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelDrawer">Cancel</button>
-        <button type="button" class="btn btn-primary" id="btnSaveDrawer" style="min-width: 160px;">
-          <i data-lucide="check"></i> Save Changes
+        <button type="button" class="btn btn-danger btn-sm" id="btnDeleteDrawerDeal" style="display:none;">
+          <i data-lucide="trash-2"></i> Delete Deal
         </button>
+        <div style="display:flex; gap:0.5rem; margin-left:auto;">
+          <button type="button" class="btn btn-secondary" id="btnCancelDrawer">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnSaveDrawer" style="min-width: 150px;">
+            <i data-lucide="check"></i> Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TEAM AUDIT & CHANGE LOGS MODAL ================= -->
+  <div id="auditModal" class="modal-overlay">
+    <div class="modal-card" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3><i data-lucide="history"></i> Team Change Log & Audit Tracker</h3>
+        <button class="btn-close" id="btnCloseAuditModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+          <span class="text-muted" style="font-size:0.8rem;">Live chronological change tracking across all team accounts</span>
+          <button id="btnClearAuditLogs" class="btn btn-secondary btn-sm" style="display:none;">Clear Logs</button>
+        </div>
+
+        <div id="globalAuditLogList" class="comments-log-list" style="max-height: 380px;">
+          <!-- Dynamically rendered change logs -->
+        </div>
       </div>
     </div>
   </div>
